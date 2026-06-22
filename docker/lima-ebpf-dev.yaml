@@ -1,0 +1,83 @@
+# Lima虚拟机配置: eBPF开发环境
+# 使用方式: limactl start docker/lima-ebpf-dev.yaml
+# 登录方式: limactl shell ebpf-dev
+
+vmType: qemu
+arch: aarch64  # Apple Silicon (M1/M2/M3/M4)
+
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: aarch64
+
+cpus: 4
+memory: 8GiB
+disk: 50GiB
+
+mounts:
+  - location: "~"
+    writable: false
+  - location: "/tmp/lima"
+    writable: true
+
+containerd:
+  system: false
+  user: false
+
+firmware:
+  legacyBIOS: false
+
+mountType: 9p
+
+ssh:
+  forwardAgent: true
+  loadDotSSHPubKeys: true
+
+provision:
+  # 系统更新和基础包
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -e
+      export DEBIAN_FRONTEND=noninteractive
+
+      echo ">>> 更新系统..."
+      apt-get update -qq
+      apt-get upgrade -y -qq
+
+      echo ">>> 安装eBPF开发工具链..."
+      apt-get install -y -qq \
+        build-essential clang llvm llvm-dev \
+        libbpf-dev linux-headers-$(uname -r) \
+        bpfcc-tools python3-bpfcc libbpfcc-dev \
+        bpftool pkg-config
+
+      echo ">>> 安装Python 3和工具..."
+      apt-get install -y -qq \
+        python3 python3-pip python3-dev python3-venv
+
+      echo ">>> 安装压测工具..."
+      apt-get install -y -qq \
+        stress-ng fio sysbench \
+        linux-tools-$(uname -r) \
+        hwloc numactl
+
+      echo ">>> 验证eBPF支持..."
+      echo "内核版本: $(uname -r)"
+      if [[ -f /sys/kernel/btf/vmlinux ]]; then
+        echo "BTF支持: 可用"
+      else
+        echo "BTF支持: 不可用 (CO-RE功能受限)"
+      fi
+
+      echo ">>> 环境搭建完成"
+
+  # 用户空间配置
+  - mode: user
+    script: |
+      #!/bin/bash
+      set -e
+      echo ">>> 配置Python虚拟环境..."
+      python3 -m venv ~/ebpf-venv
+      source ~/ebpf-venv/bin/activate
+      pip install --quiet pyyaml rich
+      echo ">>> Python环境就绪"

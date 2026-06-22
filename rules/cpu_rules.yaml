@@ -1,0 +1,45 @@
+# CPU异常自定义规则
+# 可在默认规则基础上扩展
+
+rules:
+  - name: cpu_sched_delay
+    description: 调度延迟异常
+    conditions:
+      - metric: "cpu.global.cpu_usage_percent"
+        op: "<"
+        value: 70
+        description: "CPU使用率不高"
+      - metric: "cpu.global.runqueue_length"
+        op: ">"
+        value: 8
+        description: "运行队列过长"
+    anomaly_type: cpu_anomaly
+    severity: medium
+    root_cause:
+      description: "过载导致调度延迟，CPU并非瓶颈但任务排队严重"
+      category: cpu_sched_delay
+      confidence: 0.70
+      reasoning: "CPU使用率不高但运行队列过长，可能是I/O等待或优先级问题导致调度延迟"
+    recommendations:
+      - "检查是否有大量I/O等待进程"
+      - "使用perf sched分析调度延迟"
+      - "考虑调整进程优先级或cgroup配置"
+
+  - name: cpu_iowait_high
+    description: CPU I/O等待占比高
+    conditions:
+      - metric: "cpu.global.cpu_iowait_percent"
+        op: ">"
+        value: 20
+        description: "I/O等待占比超过20%"
+    anomaly_type: cpu_anomaly
+    severity: medium
+    root_cause:
+      description: "CPU大量时间处于I/O等待状态"
+      category: cpu_io_wait
+      confidence: 0.80
+      reasoning: "iowait占比异常，表明存在I/O瓶颈导致CPU空闲等待"
+    recommendations:
+      - "检查磁盘I/O状态(iostat -x 1)"
+      - "定位高I/O进程(iotop)"
+      - "评估是否需要升级存储设备"
