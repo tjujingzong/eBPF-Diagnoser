@@ -1,6 +1,6 @@
 #!/bin/bash
 # eBPF Diagnoser 环境搭建脚本
-# 在Ubuntu 24.04 (Lima VM) 中运行
+# 在Ubuntu 24.04 / openKylin 中运行
 
 set -e
 

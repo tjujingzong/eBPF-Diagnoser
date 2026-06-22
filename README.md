@@ -40,20 +40,36 @@ git clone https://github.com/yourname/ebpf-diagnoser.git
 cd ebpf-diagnoser
 ```
 
-### 一键环境搭建 (Lima VM on macOS)
+### 环境搭建 (Windows QEMU + openKylin)
+
+> 详细步骤请参考 [openKylin环境搭建指南](docs/openKylin环境搭建指南.md)
+
+```powershell
+# 1. 安装QEMU并下载openKylin ISO，创建VM磁盘
+.\scripts\install-openkylin-vm.ps1
+
+# 2. 在QEMU窗口中完成openKylin安装后，配置eBPF开发环境
+.\scripts\install-openkylin-vm.ps1 -PostInstall
+
+# 3. SSH进入VM
+ssh -p 2222 user@localhost
+
+# 4. 在VM内传输并运行诊断工具
+scp -rP 2222 . user@localhost:~/ebpf-diagnoser/
+cd ~/ebpf-diagnoser
+sudo python3 -m src.main --probe all
+```
+
+### 环境搭建 (openKylin 直装)
 
 ```bash
-# 安装Lima
-brew install lima
+# 在openKylin系统内直接运行环境搭建脚本
+sudo bash scripts/setup_env.sh
 
-# 创建eBPF开发VM
-limactl start docker/lima-ebpf-dev.yaml
-
-# 登录VM
-limactl shell ebpf-dev
-
-# 在VM内运行
-sudo python3 -m src.main --probe all
+# 或手动安装依赖
+sudo apt install -y clang llvm libbpf-dev linux-headers-$(uname -r) \
+    bpfcc-tools python3-bpfcc libbpfcc-dev bpftool
+pip install pyyaml rich
 ```
 
 ### 使用方式
@@ -126,17 +142,21 @@ ebpf-diagnoser/
 ├── rules/
 │   └── cpu_rules.yaml       # 自定义规则示例
 ├── scripts/
-│   ├── setup_env.sh         # 环境搭建
-│   ├── stress_cpu.sh        # CPU压测
-│   ├── stress_io.sh         # I/O压测
-│   ├── stress_mem.sh        # 内存压测
-│   ├── stress_lock.sh       # 锁竞争压测
-│   ├── stress_syscall.sh    # 系统调用压测
-│   ├── stress_composite.sh  # 组合压测
-│   ├── run_tests.sh         # 一键测试
-│   └── benchmark_overhead.sh # 性能开销测试
+│   ├── install-openkylin-vm.ps1   # Windows QEMU VM安装脚本
+│   ├── postinstall-openkylin-win.sh # VM内eBPF环境配置
+│   ├── start-vm.ps1               # 快速启动VM
+│   ├── ssh-to-vm.ps1              # SSH连接VM
+│   ├── setup_env.sh               # 环境搭建(Linux内运行)
+│   ├── stress_cpu.sh              # CPU压测
+│   ├── stress_io.sh               # I/O压测
+│   ├── stress_mem.sh              # 内存压测
+│   ├── stress_lock.sh             # 锁竞争压测
+│   ├── stress_syscall.sh          # 系统调用压测
+│   ├── stress_composite.sh        # 组合压测
+│   ├── run_tests.sh               # 一键测试
+│   └── benchmark_overhead.sh      # 性能开销测试
 ├── docker/
-│   └── lima-ebpf-dev.yaml   # Lima VM配置
+│   └── openkylin-test.Dockerfile   # 兼容性测试Dockerfile
 ├── docs/                    # 文档
 ├── tests/                   # 测试
 ├── pyproject.toml

@@ -1,13 +1,14 @@
 #!/bin/bash
-# openKylin 后安装配置脚本
+# openKylin 后安装配置脚本 (Windows QEMU VM)
 # 在openKylin安装完成并启动后，通过SSH或控制台运行此脚本
 # 配置SSH、eBPF开发环境、压测工具等
 #
 # 使用方式 (在openKylin VM内运行):
-#   sudo bash scripts/postinstall-openkylin.sh
+#   sudo bash postinstall-openkylin-win.sh
 #
 # 或从Windows通过SSH:
-#   ssh -p 2222 user@localhost 'sudo bash -s' < scripts/postinstall-openkylin.sh
+#   scp -P 2222 scripts/postinstall-openkylin-win.sh user@localhost:/tmp/
+#   ssh -p 2222 user@localhost 'sudo bash /tmp/postinstall-openkylin-win.sh'
 
 set -e
 
@@ -28,6 +29,7 @@ fi
 
 step "=========================================="
 step "  openKylin eBPF开发环境配置"
+step "  (Windows QEMU VM)"
 step "=========================================="
 
 # 1. 系统更新
@@ -46,6 +48,7 @@ fi
 # 配置SSH允许密码登录和密钥登录
 mkdir -p /etc/ssh
 cat >> /etc/ssh/sshd_config << 'EOF'
+
 # QEMU VM SSH 配置
 PermitRootLogin yes
 PasswordAuthentication yes
@@ -56,16 +59,13 @@ EOF
 systemctl enable ssh 2>/dev/null || systemctl enable sshd 2>/dev/null || true
 systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null || true
 
-# 配置用户SSH目录
-USER_HOME="/home/ljz"
-mkdir -p "${USER_HOME}/.ssh"
-chmod 700 "${USER_HOME}/.ssh"
-chown -R ljz:ljz "${USER_HOME}/.ssh" 2>/dev/null || true
+info "SSH 服务已配置并启动"
+info "可从Windows通过: ssh -p 2222 user@localhost 连接"
 
 # 3. 安装eBPF开发工具链
 step "安装eBPF开发工具链..."
 
-# openKylin 2.0 基于Debian，使用apt
+# openKylin 2.0 基于Debian/Ubuntu，使用apt
 if command -v apt-get &>/dev/null; then
     info "使用apt安装eBPF工具..."
 
@@ -149,6 +149,7 @@ fi
 step "验证eBPF支持..."
 echo ""
 echo "内核版本: $(uname -r)"
+echo "架构: $(uname -m)"
 echo ""
 
 # BTF
@@ -178,7 +179,6 @@ for tp in "sched:sched_switch" "block:block_rq_issue" "block:block_rq_complete" 
     if [[ -f "/sys/kernel/debug/tracing/events/${category}/${event}" ]]; then
         info "  ✓ ${tp}"
     else
-        # 尝试通过bpftool检查
         if bpftool show tracing 2>/dev/null | grep -q "${tp}"; then
             info "  ✓ ${tp}"
         else
@@ -202,18 +202,32 @@ fi
 
 # 8. 创建Python虚拟环境
 step "配置Python虚拟环境..."
-USER_HOME="/home/ljz"
+CURRENT_USER="${SUDO_USER:-$(whoami)}"
+USER_HOME=$(eval echo "~${CURRENT_USER}")
 VENV_DIR="${USER_HOME}/ebpf-venv"
 
 if [[ ! -d "$VENV_DIR" ]]; then
-    su - ljz -c "python3 -m venv ${VENV_DIR}" 2>/dev/null || \
+    su - "$CURRENT_USER" -c "python3 -m venv ${VENV_DIR}" 2>/dev/null || \
         python3 -m venv "$VENV_DIR"
 fi
 
-su - ljz -c "source ${VENV_DIR}/bin/activate && pip install --quiet --upgrade pip pyyaml rich" 2>/dev/null || \
+su - "$CURRENT_USER" -c "source ${VENV_DIR}/bin/activate && pip install --quiet --upgrade pip pyyaml rich" 2>/dev/null || \
     (source "${VENV_DIR}/bin/activate" && pip install --quiet --upgrade pip pyyaml rich)
 
-chown -R ljz:ljz "$VENV_DIR" 2>/dev/null || true
+chown -R "${CURRENT_USER}:${CURRENT_USER}" "$VENV_DIR" 2>/dev/null || true
+
+# 9. 配置项目目录
+step "配置项目目录..."
+PROJECT_DIR="${USER_HOME}/ebpf-diagnoser"
+if [[ ! -d "$PROJECT_DIR" ]]; then
+    mkdir -p "$PROJECT_DIR"
+    chown -R "${CURRENT_USER}:${CURRENT_USER}" "$PROJECT_DIR" 2>/dev/null || true
+    info "项目目录已创建: $PROJECT_DIR"
+    info "请从Windows传输项目代码:"
+    info "  scp -rP 2222 . user@localhost:~/ebpf-diagnoser/"
+else
+    info "项目目录已存在: $PROJECT_DIR"
+fi
 
 echo ""
 echo "============================================"
@@ -230,7 +244,13 @@ echo "  stress-ng: $(stress-ng --version 2>/dev/null | head -1 || echo 'N/A')"
 echo "  fio: $(fio --version 2>/dev/null | head -1 || echo 'N/A')"
 echo ""
 echo "下一步:"
-echo "  1. 从Windows SSH连接: ssh -p 2222 user@localhost"
-echo "  2. 传输项目代码: scp -rP 2222 . user@localhost:~/ebpf-diagnoser/"
-echo "  3. 进入项目目录运行诊断工具"
+echo "  1. 从Windows传输项目代码:"
+echo "     scp -rP 2222 . user@localhost:~/ebpf-diagnoser/"
+echo "  2. SSH进入VM:"
+echo "     ssh -p 2222 user@localhost"
+echo "  3. 进入项目目录:"
+echo "     cd ~/ebpf-diagnoser"
+echo "  4. 激活虚拟环境并运行诊断工具:"
+echo "     source ~/ebpf-venv/bin/activate"
+echo "     sudo python3 -m src.main --probe all --duration 60"
 echo ""
