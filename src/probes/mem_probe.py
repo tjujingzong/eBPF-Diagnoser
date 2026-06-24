@@ -10,62 +10,6 @@ import os
 from src.probes.base import BaseProbe
 
 
-MEM_BPF_TEXT = r"""
-#include <uapi/linux/ptrace.h>
-
-// 系统级内存事件
-struct mem_event_stats {
-    u64 kswapd_wake_count;
-    u64 direct_reclaim_count;
-    u64 oom_kill_count;
-};
-
-BPF_ARRAY(mem_stats, struct mem_event_stats, 1);
-
-// kswapd唤醒
-TRACEPOINT_PROBE(vmscan, mm_vmscan_kswapd_wake) {
-    u32 zero = 0;
-    struct mem_event_stats *stat = mem_stats.lookup(&zero);
-    if (stat) {
-        stat->kswapd_wake_count += 1;
-    } else {
-        struct mem_event_stats new_stat = {};
-        new_stat.kswapd_wake_count = 1;
-        mem_stats.update(&zero, &new_stat);
-    }
-    return 0;
-}
-
-// 直接回收
-TRACEPOINT_PROBE(vmscan, mm_vmscan_direct_reclaim_begin) {
-    u32 zero = 0;
-    struct mem_event_stats *stat = mem_stats.lookup(&zero);
-    if (stat) {
-        stat->direct_reclaim_count += 1;
-    } else {
-        struct mem_event_stats new_stat = {};
-        new_stat.direct_reclaim_count = 1;
-        mem_stats.update(&zero, &new_stat);
-    }
-    return 0;
-}
-
-// OOM kill
-TRACEPOINT_PROBE(oom, mark_victim) {
-    u32 zero = 0;
-    struct mem_event_stats *stat = mem_stats.lookup(&zero);
-    if (stat) {
-        stat->oom_kill_count += 1;
-    } else {
-        struct mem_event_stats new_stat = {};
-        new_stat.oom_kill_count = 1;
-        mem_stats.update(&zero, &new_stat);
-    }
-    return 0;
-}
-"""
-
-
 class MemProbe(BaseProbe):
     """内存抖动/OOM探针"""
 
@@ -75,12 +19,8 @@ class MemProbe(BaseProbe):
         self._prev_timestamp = None
         self._prev_mem_events = None
 
-    def get_bpf_text(self) -> str:
-        return MEM_BPF_TEXT.replace("__SAMPLE_RATE__", str(self.sample_rate))
-
-    def _attach_tracepoints(self):
-        """vmscan/oom tracepoint由BCC自动挂载"""
-        pass
+    def get_bpf_obj_name(self) -> str:
+        return "mem_probe.bpf.o"
 
     def poll(self) -> dict:
         """轮询内存指标"""
@@ -118,11 +58,11 @@ class MemProbe(BaseProbe):
 
         # 3. BPF事件统计
         try:
-            stat = self.bpf["mem_stats"][0]
+            stat = self._read_array("mem_stats", 0)
             curr_events = {
-                "direct_reclaim_count": stat.direct_reclaim_count,
-                "kswapd_wake_count": stat.kswapd_wake_count,
-                "oom_kill_count": stat.oom_kill_count,
+                "direct_reclaim_count": stat.get("direct_reclaim_count", 0),
+                "kswapd_wake_count": stat.get("kswapd_wake_count", 0),
+                "oom_kill_count": stat.get("oom_kill_count", 0),
             }
             if self._prev_mem_events and self._prev_timestamp:
                 dt = now - self._prev_timestamp
@@ -138,7 +78,7 @@ class MemProbe(BaseProbe):
             metrics["events"]["kswapd_wake_total"] = curr_events["kswapd_wake_count"]
             metrics["events"]["oom_kill_total"] = curr_events["oom_kill_count"]
             self._prev_mem_events = curr_events
-        except (IndexError, KeyError):
+        except (KeyError, TypeError):
             pass
 
         # 4. Top内存进程

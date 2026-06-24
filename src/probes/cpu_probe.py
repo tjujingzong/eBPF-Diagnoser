@@ -1,103 +1,12 @@
 """CPU异常探针
 
 检测: CPU异常占用、调度延迟、busy loop、线程竞争
-tracepoint: sched:sched_switch
+tracepoint: sched:sched_switch, sched:sched_wakeup
 """
 
 import os
 import time
-from collections import defaultdict
 from src.probes.base import BaseProbe
-
-
-# BPF C程序: CPU探针 (兼容Kernel 6.6+)
-CPU_BPF_TEXT = r"""
-#include <uapi/linux/ptrace.h>
-#include <linux/sched.h>
-
-// 每进程CPU统计
-struct cpu_proc_stat {
-    u32 pid;
-    u64 switch_count;
-    char comm[TASK_COMM_LEN];
-};
-
-// 全局统计
-struct global_stat {
-    u64 total_switches;
-    u64 sample_count;
-};
-
-// 调度延迟统计 (sched_wakeup → sched_switch)
-struct sched_latency {
-    u64 total_latency_ns;
-    u64 max_latency_ns;
-    u64 count;
-};
-
-BPF_HASH(proc_stats, u32, struct cpu_proc_stat);
-BPF_ARRAY(global, struct global_stat, 1);
-BPF_HASH(wakeup_ts, u32, u64);  // pid -> wakeup timestamp
-BPF_ARRAY(sched_lat, struct sched_latency, 1);
-
-// sched_wakeup: 记录唤醒时间
-TRACEPOINT_PROBE(sched, sched_wakeup) {
-    u32 pid = args->pid;
-    u64 ts = bpf_ktime_get_ns();
-    wakeup_ts.update(&pid, &ts);
-    return 0;
-}
-
-// sched_switch: 上下文切换 + 计算调度延迟
-TRACEPOINT_PROBE(sched, sched_switch) {
-    u32 prev_pid = args->prev_pid;
-    u32 next_pid = args->next_pid;
-
-    // 简单采样: 每__SAMPLE_RATE__次采集一次
-    u32 zero_idx = 0;
-    struct global_stat *g = global.lookup(&zero_idx);
-    if (!g) {
-        struct global_stat new_g = {};
-        new_g.total_switches = 1;
-        new_g.sample_count = 1;
-        global.update(&zero_idx, &new_g);
-    } else {
-        g->total_switches += 1;
-        g->sample_count += 1;
-    }
-
-    // 更新prev进程
-    struct cpu_proc_stat *prev_stat = proc_stats.lookup(&prev_pid);
-    if (prev_stat) {
-        prev_stat->switch_count += 1;
-    } else {
-        struct cpu_proc_stat new_stat = {};
-        new_stat.pid = prev_pid;
-        new_stat.switch_count = 1;
-        bpf_get_current_comm(&new_stat.comm, sizeof(new_stat.comm));
-        proc_stats.update(&prev_pid, &new_stat);
-    }
-
-    // 计算next进程的调度延迟 (从wakeup到switch的时间)
-    u64 *wake_ts = wakeup_ts.lookup(&next_pid);
-    if (wake_ts) {
-        u64 now_ts = bpf_ktime_get_ns();
-        u64 latency_ns = now_ts - *wake_ts;
-        wakeup_ts.delete(&next_pid);
-
-        struct sched_latency *lat = sched_lat.lookup(&zero_idx);
-        if (lat) {
-            lat->total_latency_ns += latency_ns;
-            if (latency_ns > lat->max_latency_ns) {
-                lat->max_latency_ns = latency_ns;
-            }
-            lat->count += 1;
-        }
-    }
-
-    return 0;
-}
-"""
 
 
 class CpuProbe(BaseProbe):
@@ -107,14 +16,10 @@ class CpuProbe(BaseProbe):
         super().__init__(config)
         self._prev_cpu_stat = None
         self._prev_timestamp = None
-        self._proc_cpu_prev = {}  # pid -> (utime_ticks, stime_ticks)
+        self._proc_cpu_prev = {}
 
-    def get_bpf_text(self) -> str:
-        return CPU_BPF_TEXT.replace("__SAMPLE_RATE__", str(self.sample_rate))
-
-    def _attach_tracepoints(self):
-        """sched tracepoint由BCC自动挂载"""
-        pass
+    def get_bpf_obj_name(self) -> str:
+        return "cpu_probe.bpf.o"
 
     def poll(self) -> dict:
         """轮询CPU指标"""
@@ -181,20 +86,20 @@ class CpuProbe(BaseProbe):
 
         # 4. 从BPF MAP获取上下文切换统计
         try:
-            zero_idx = 0
-            g = self.bpf["global"][zero_idx]
-            total_sw = g.total_switches
+            g = self._read_array("global", 0)
+            total_sw = g.get("total_switches", 0)
             if self._prev_timestamp:
                 dt = now - self._prev_timestamp
                 if dt > 0 and total_sw > 0:
                     metrics["global"]["context_switches_per_sec"] = round(total_sw / dt, 0)
-        except (IndexError, KeyError):
+        except (KeyError, TypeError):
             pass
 
         # 5. 从BPF MAP获取每进程切换统计
         try:
-            for key, val in self.bpf["proc_stats"].items():
-                pid = key.value
+            for entry in self._read_hash("proc_stats", max_entries=200):
+                pid = entry["key"]
+                val = entry["value"]
                 if pid not in metrics["per_process"]:
                     try:
                         with open(f"/proc/{pid}/comm") as f:
@@ -202,7 +107,7 @@ class CpuProbe(BaseProbe):
                         metrics["per_process"][pid] = {
                             "pid": pid,
                             "comm": comm,
-                            "switch_count": val.switch_count,
+                            "switch_count": val.get("switch_count", 0),
                         }
                     except (FileNotFoundError, ProcessLookupError):
                         pass
@@ -211,15 +116,15 @@ class CpuProbe(BaseProbe):
 
         # 6. 从BPF MAP获取调度延迟统计
         try:
-            zero_idx = 0
-            lat = self.bpf["sched_lat"][zero_idx]
-            if lat.count > 0:
-                avg_latency_ms = lat.total_latency_ns / lat.count / 1e6
-                max_latency_ms = lat.max_latency_ns / 1e6
+            lat = self._read_array("sched_lat", 0)
+            count = lat.get("count", 0)
+            if count > 0:
+                avg_latency_ms = lat["total_latency_ns"] / count / 1e6
+                max_latency_ms = lat.get("max_latency_ns", 0) / 1e6
                 metrics["global"]["sched_avg_latency_ms"] = round(avg_latency_ms, 2)
                 metrics["global"]["sched_max_latency_ms"] = round(max_latency_ms, 2)
-                metrics["global"]["sched_delay_count"] = lat.count
-        except (IndexError, KeyError):
+                metrics["global"]["sched_delay_count"] = count
+        except (KeyError, TypeError):
             pass
 
         self._prev_timestamp = now

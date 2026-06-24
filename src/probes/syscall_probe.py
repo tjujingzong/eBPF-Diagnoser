@@ -6,98 +6,9 @@ tracepoint: raw_syscalls:sys_enter, raw_syscalls:sys_exit
 
 import time
 import os
-from collections import defaultdict
 from src.probes.base import BaseProbe
 
 
-# 注意: raw_syscalls极高频(每秒数万次)，必须用采样
-SYSCALL_BPF_TEXT = r"""
-#include <uapi/linux/ptrace.h>
-#include <linux/sched.h>
-
-// 每syscall统计
-struct syscall_stat {
-    u64 call_count;
-    u64 total_time_ns;
-    u64 max_time_ns;
-    u64 err_count;
-};
-
-BPF_HASH(syscall_stats, u32, struct syscall_stat);
-BPF_HASH(syscall_start, u64, u64);  // tid -> start_ts
-BPF_ARRAY(total_syscalls, u64, 1);
-
-// 采样计数器
-BPF_ARRAY(sample_ctr, u64, 1);
-
-// sys_enter
-TRACEPOINT_PROBE(raw_syscalls, sys_enter) {
-    // 采样控制
-    u32 zero = 0;
-    u64 *ctr = sample_ctr.lookup(&zero);
-    if (ctr) {
-        u64 c = *ctr;
-        if (c % __SAMPLE_RATE__ != 0) {
-            *ctr = c + 1;
-            return 0;
-        }
-        *ctr = c + 1;
-    } else {
-        u64 one = 1;
-        sample_ctr.update(&zero, &one);
-    }
-
-    u64 tid = bpf_get_current_pid_tgid();
-    u64 ts = bpf_ktime_get_ns();
-    syscall_start.update(&tid, &ts);
-
-    // 总计数
-    u64 *total = total_syscalls.lookup(&zero);
-    if (total) {
-        (*total) += 1;
-    }
-    return 0;
-}
-
-// sys_exit
-TRACEPOINT_PROBE(raw_syscalls, sys_exit) {
-    u64 tid = bpf_get_current_pid_tgid();
-    u64 *start_ts = syscall_start.lookup(&tid);
-    if (!start_ts) {
-        return 0;
-    }
-
-    u64 ts = bpf_ktime_get_ns();
-    u64 duration_ns = ts - *start_ts;
-    syscall_start.delete(&tid);
-
-    u32 syscall_nr = args->id;
-    long ret = args->ret;
-
-    struct syscall_stat *stat = syscall_stats.lookup(&syscall_nr);
-    if (stat) {
-        stat->call_count += 1;
-        stat->total_time_ns += duration_ns;
-        if (duration_ns > stat->max_time_ns) {
-            stat->max_time_ns = duration_ns;
-        }
-        if (ret < 0) {
-            stat->err_count += 1;
-        }
-    } else {
-        struct syscall_stat new_stat = {};
-        new_stat.call_count = 1;
-        new_stat.total_time_ns = duration_ns;
-        new_stat.max_time_ns = duration_ns;
-        new_stat.err_count = (ret < 0) ? 1 : 0;
-        syscall_stats.update(&syscall_nr, &new_stat);
-    }
-    return 0;
-}
-"""
-
-
-# Linux系统调用号映射
 SYSCALL_NAMES_X86_64 = {
     0: "read", 1: "write", 2: "open", 3: "close", 4: "stat",
     5: "fstat", 6: "lstat", 7: "poll", 8: "lseek", 9: "mmap",
@@ -190,11 +101,8 @@ class SyscallProbe(BaseProbe):
                 continue
         return names
 
-    def get_bpf_text(self) -> str:
-        return SYSCALL_BPF_TEXT.replace("__SAMPLE_RATE__", str(self.sample_rate))
-
-    def _attach_tracepoints(self):
-        pass
+    def get_bpf_obj_name(self) -> str:
+        return "syscall_probe.bpf.o"
 
     def poll(self) -> dict:
         now = time.time()
@@ -202,13 +110,14 @@ class SyscallProbe(BaseProbe):
 
         syscall_data = {}
         try:
-            for key, val in self.bpf["syscall_stats"].items():
-                nr = key.value
+            for entry in self._read_hash("syscall_stats", max_entries=512):
+                nr = entry["key"]
+                val = entry["value"]
                 syscall_data[nr] = {
-                    "call_count": val.call_count,
-                    "total_time_ns": val.total_time_ns,
-                    "max_time_ns": val.max_time_ns,
-                    "err_count": val.err_count,
+                    "call_count": val.get("call_count", 0),
+                    "total_time_ns": val.get("total_time_ns", 0),
+                    "max_time_ns": val.get("max_time_ns", 0),
+                    "err_count": val.get("err_count", 0),
                 }
         except Exception:
             pass
@@ -243,9 +152,12 @@ class SyscallProbe(BaseProbe):
         self._prev_timestamp = now
 
         try:
-            total = self.bpf["total_syscalls"][0].value
-            metrics["global"]["total_syscalls"] = total
-        except (IndexError, KeyError):
+            total = self._read_array("total_syscalls", 0)
+            if isinstance(total, (int, float)):
+                metrics["global"]["total_syscalls"] = total
+            elif isinstance(total, dict):
+                metrics["global"]["total_syscalls"] = total.get("value", 0)
+        except (KeyError, TypeError):
             pass
 
         return metrics

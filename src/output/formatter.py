@@ -35,6 +35,14 @@ def format_json(anomalies: List[Anomaly], system_info: dict = None,
 
 # ───────────────────── YAML输出 ─────────────────────
 
+class _YAMLDumper(yaml.SafeDumper):
+    pass
+
+def _yaml_representer(dumper, data):
+    return dumper.represent_str(str(data))
+
+_YAMLDumper.add_representer(type(None), lambda d, _: d.represent_scalar('tag:yaml.org,2002:null', ''))
+
 def format_yaml(anomalies: List[Anomaly], system_info: dict = None,
                 duration: float = 0, overhead: dict = None) -> str:
     """格式化为YAML诊断报告"""
@@ -52,7 +60,7 @@ def format_yaml(anomalies: List[Anomaly], system_info: dict = None,
             "duration_seconds": round(duration, 1),
         },
     }
-    return yaml.dump(report, default_flow_style=False, allow_unicode=True, sort_keys=False, default=str)
+    return yaml.dump(report, Dumper=_YAMLDumper, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
 
 # ───────────────────── Markdown输出 ─────────────────────

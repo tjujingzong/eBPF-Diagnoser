@@ -33,9 +33,9 @@ class ProbeManager:
     def attach_all(self):
         """加载并挂载所有探针"""
         for name, probe in self.probes.items():
-            probe.attach()
-            # apply sample rate
+            # 先设置采样率（libbpf在LOAD时注入.rodata）
             probe.set_sample_rate(getattr(self.config.probe, f"{name}_sample_rate", 1))
+            probe.attach()
 
     def detach_all(self):
         """卸载所有探针"""

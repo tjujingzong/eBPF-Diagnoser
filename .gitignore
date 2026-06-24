@@ -28,3 +28,13 @@ Thumbs.db
 diagnosis_report.json
 diagnosis_report.md
 *.log
+
+# Compiled binaries
+test_bpf_load
+bpf/**/*.o
+bpf/loader/bpf_loader
+
+# VMware VM files
+*.vmdk
+*.vmx
+*.nvram

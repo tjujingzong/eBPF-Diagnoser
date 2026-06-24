@@ -1,14 +1,13 @@
 #!/bin/bash
-# eBPF Diagnoser 环境搭建脚本
-# 在Ubuntu 24.04 / openKylin 中运行
+# eBPF Diagnoser 环境搭建脚本 (libbpf + CO-RE)
+# 在Ubuntu 24.04 / openKylin / Fedora 中运行
 
 set -e
 
 echo "=========================================="
-echo " eBPF Diagnoser 环境搭建"
+echo " eBPF Diagnoser 环境搭建 (libbpf)"
 echo "=========================================="
 
-# 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -18,110 +17,115 @@ info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 
-# 检查是否root
 if [[ $EUID -ne 0 ]]; then
     error "此脚本需要root权限运行 (sudo ./setup_env.sh)"
 fi
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
-# 1. 系统更新
-info "更新系统软件包..."
-apt-get update -qq
-apt-get upgrade -y -qq
-
-# 2. 安装eBPF开发工具链
-info "安装eBPF开发工具链..."
-apt-get install -y -qq \
-    build-essential \
-    clang \
-    llvm \
-    llvm-dev \
-    libbpf-dev \
-    linux-headers-$(uname -r) \
-    pkg-config
-
-# 尝试安装BCC包 (Ubuntu可用，openKylin不可用)
-if apt-cache show bpfcc-tools &>/dev/null; then
-    info "安装BCC系统包..."
-    apt-get install -y -qq \
-        bpfcc-tools python3-bpfcc libbpfcc-dev bpftool 2>/dev/null || true
-fi
-
-# 验证BCC是否可用，不可用则从源码编译
-if ! python3 -c "from bcc import BPF" 2>/dev/null; then
-    warn "BCC包不可用，从源码编译..."
-    apt-get install -y -qq \
-        cmake flex bison libelf-dev libfl-dev liblzma-dev \
-        libclang-dev git
-
-    if [[ ! -d /tmp/bcc ]]; then
-        git clone --depth=1 https://github.com/iovisor/bcc.git /tmp/bcc
+# 检测发行版
+detect_distro() {
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        echo "$ID"
+    else
+        echo "unknown"
     fi
-    mkdir -p /tmp/bcc/build && cd /tmp/bcc/build
-    cmake .. -DPYTHON_CMD=python3 -DCMAKE_INSTALL_PREFIX=/usr
-    make -j$(nproc)
-    make install
-    echo /usr/lib64 | tee /etc/ld.so.conf.d/bcc.conf
-    ldconfig
-    cd "$PROJECT_DIR" 2>/dev/null || cd "$(dirname "$0")/.."
-    info "BCC源码编译安装完成"
-fi
+}
+DISTRO=$(detect_distro)
+info "检测到发行版: $DISTRO"
+
+# 1. 安装运行时依赖
+info "安装运行时依赖..."
+case "$DISTRO" in
+    ubuntu|debian|linuxmint|openkylin)
+        apt-get update -qq
+        apt-get install -y -qq \
+            python3 python3-pip python3-venv \
+            libbpf-dev libelf1 zlib1g \
+            linux-headers-"$(uname -r)" \
+            bpftool
+        ;;
+    fedora)
+        dnf install -y \
+            python3 python3-pip \
+            libbpf elfutils-libelf zlib \
+            kernel-headers kernel-devel \
+            bpftool
+        ;;
+    rhel|centos|rocky|almalinux)
+        dnf install -y epel-release 2>/dev/null || true
+        dnf install -y \
+            python3 python3-pip \
+            libbpf elfutils-libelf zlib \
+            kernel-headers kernel-devel \
+            bpftool
+        ;;
+    *)
+        warn "未知发行版，请手动安装: libbpf, libelf, zlib, python3, bpftool"
+        ;;
+esac
+
+# 2. 安装开发工具链 (用于编译BPF程序和loader)
+info "安装开发工具链..."
+case "$DISTRO" in
+    ubuntu|debian|linuxmint|openkylin)
+        apt-get install -y -qq \
+            build-essential clang llvm pkg-config
+        ;;
+    fedora|rhel|centos|rocky|almalinux)
+        dnf install -y gcc clang llvm pkgconf-pkg-config make
+        ;;
+esac
 
 # 3. 安装Python依赖
-info "安装Python 3和pip..."
-apt-get install -y -qq \
-    python3 \
-    python3-pip \
-    python3-dev \
-    python3-venv
+info "安装Python依赖..."
+pip3 install --quiet --break-system-packages pyyaml rich 2>/dev/null \
+    || pip3 install --quiet pyyaml rich 2>/dev/null \
+    || pip install --quiet pyyaml rich
 
 # 4. 安装压测工具
 info "安装压测工具..."
-apt-get install -y -qq \
-    fio \
-    sysbench \
-    hwloc \
-    numactl 2>/dev/null || true
+case "$DISTRO" in
+    ubuntu|debian|linuxmint|openkylin)
+        apt-get install -y -qq \
+            fio sysbench hwloc numactl 2>/dev/null || true
+        if ! command -v stress-ng &>/dev/null; then
+            apt-get install -y -qq stress-ng 2>/dev/null || \
+                warn "stress-ng 不可用，部分测试将无法运行"
+        fi
+        ;;
+    fedora|rhel|centos|rocky|almalinux)
+        dnf install -y fio stress-ng hwloc numactl 2>/dev/null || true
+        ;;
+esac
 
-# stress-ng 在某些发行版(如openKylin)中可能存在依赖冲突
-if ! command -v stress-ng &>/dev/null; then
-    if apt-cache show stress-ng &>/dev/null; then
-        apt-get install -y -qq stress-ng 2>/dev/null || {
-            warn "stress-ng 安装失败(依赖冲突)，尝试强制安装..."
-            apt-get download stress-ng 2>/dev/null && \
-            dpkg --force-depends -i stress-ng_*.deb 2>/dev/null || \
-            warn "stress-ng 不可用，部分测试将无法运行"
-        }
-    fi
-fi
+# 5. 编译BPF程序和loader
+info "编译BPF程序和loader..."
+cd "$PROJECT_DIR"
+make clean && make all
 
-# 5. 验证eBPF支持
+# 6. 验证eBPF支持
 info "验证eBPF支持..."
 echo ""
 echo "内核版本: $(uname -r)"
 echo ""
 
-# 检查BPF syscall
-if command -v bpftool &>/dev/null && bpftool feature 2>/dev/null | grep -q "bpf_syscall"; then
-    info "✓ BPF syscall可用"
-elif [[ -d /sys/fs/bpf ]]; then
+if [[ -f /sys/kernel/btf/vmlinux ]]; then
+    info "✓ BTF支持可用 (CO-RE可工作)"
+else
+    warn "⚠ BTF不支持 — CO-RE 需要内核 5.2+ 且 CONFIG_DEBUG_INFO_BTF=y"
+fi
+
+if [[ -d /sys/fs/bpf ]]; then
     info "✓ BPF文件系统可用"
 else
-    warn "⚠ BPF syscall可能不可用"
+    warn "⚠ BPF文件系统不可用"
 fi
 
-# 检查BTF支持
-if [[ -f /sys/kernel/btf/vmlinux ]]; then
-    info "✓ BTF支持可用"
-else
-    warn "⚠ BTF不支持 (部分CO-RE功能受限)"
-fi
-
-# 检查关键tracepoint
 echo ""
 info "检查关键tracepoint:"
-for tp in sched:sched_switch block:block_rq_issue vmscan:mm_vmscan_kswapd_wake raw_syscalls:sys_enter; do
+for tp in sched:sched_switch block:block_rq_issue vmscan:mm_vmscan_kswapd_wake raw_syscalls:sys_enter syscalls:sys_enter_futex; do
     category="${tp%%:*}"
     event="${tp##*:}"
     if [[ -f /sys/kernel/debug/tracing/events/${category}/${event} ]]; then
@@ -131,36 +135,30 @@ for tp in sched:sched_switch block:block_rq_issue vmscan:mm_vmscan_kswapd_wake r
     fi
 done
 
-# 6. 创建Python虚拟环境
-info "创建Python虚拟环境..."
-VENV_DIR="$PROJECT_DIR/.venv"
-
-if [[ ! -d "$VENV_DIR" ]]; then
-    python3 -m venv "$VENV_DIR"
+# 7. 验证编译产物
+echo ""
+info "验证编译产物:"
+for obj in build/bpf/*.bpf.o; do
+    if [[ -f "$obj" ]]; then
+        info "  ✓ $(basename $obj)"
+    fi
+done
+if [[ -x build/bin/bpf_loader ]]; then
+    info "  ✓ bpf_loader"
+else
+    warn "  ⚠ bpf_loader 未找到"
 fi
-source "$VENV_DIR/bin/activate"
-
-# 7. 安装Python包
-info "安装Python依赖..."
-pip install --quiet --upgrade pip
-pip install --quiet pyyaml rich
-
-# 8. 验证BCC Python绑定
-info "验证BCC Python绑定..."
-python3 -c "from bcc import BPF; print('✓ BCC Python绑定正常')" 2>/dev/null || \
-    warn "⚠ BCC Python绑定导入失败，请检查BCC安装 (系统包或源码编译)"
 
 echo ""
 echo "=========================================="
 info "环境搭建完成！"
 echo "=========================================="
 echo ""
-echo "使用方式:"
+echo "开发模式运行:"
 echo "  cd $PROJECT_DIR"
-echo "  source .venv/bin/activate"
-echo "  sudo python3 -m src.main --probe cpu,io --duration 60"
+echo "  sudo python3 -m src.main --probe all --duration 60"
 echo ""
-echo "压测验证:"
-echo "  sudo bash scripts/stress_cpu.sh &"
-echo "  sudo python3 -m src.main --probe cpu --duration 120"
+echo "构建一键安装包:"
+echo "  bash scripts/build_installer.sh"
+echo "  sudo bash dist/ebpf-diagnoser-*.sh"
 echo ""

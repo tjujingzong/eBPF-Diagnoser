@@ -15,9 +15,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# BCC 需通过系统包管理器安装或从源码编译，无法通过 pip 安装
-# Ubuntu: sudo apt install bpfcc-tools python3-bpfcc libbpfcc-dev
-# openKylin: 需从源码编译，详见 docs/openKylin环境搭建指南.md
+# 运行时依赖: libbpf, libelf, zlib (通过系统包管理器安装)
+# Ubuntu: sudo apt install libbpf-dev libelf1 zlib1g
+# Fedora: sudo dnf install libbpf elfutils-libelf zlib
 dev = [
     "pytest>=7.0",
 ]

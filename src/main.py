@@ -23,6 +23,7 @@ from src.collector import MetricsAggregator
 from src.analyzer import AnalyzerEngine
 from src.output import OutputFormatter
 from src.config import load_config
+from src.probes.bpf_loader import BpfLoader
 
 logger = logging.getLogger("ebpf-diagnoser")
 
@@ -145,7 +146,7 @@ def main():
         probe_manager.attach_all()
     except Exception as e:
         logger.error(f"探针加载失败: {e}")
-        logger.error("请确认: 1) 使用sudo运行 2) 内核支持eBPF 3) 已安装BCC工具")
+        logger.error("请确认: 1) 使用sudo运行 2) 内核支持eBPF 3) 已安装eBPF运行时(libbpf)")
         sys.exit(1)
 
     logger.info("所有探针加载成功，开始采集...")
@@ -219,6 +220,7 @@ def main():
 
         # 清理eBPF探针
         probe_manager.detach_all()
+        BpfLoader.reset()
         logger.info("eBPF Diagnoser 已停止")
 
 
