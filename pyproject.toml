@@ -10,9 +10,16 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
 dependencies = [
-    "bcc>=0.27.0",
     "pyyaml>=6.0",
     "rich>=13.0",
+]
+
+[project.optional-dependencies]
+# BCC 需通过系统包管理器安装或从源码编译，无法通过 pip 安装
+# Ubuntu: sudo apt install bpfcc-tools python3-bpfcc libbpfcc-dev
+# openKylin: 需从源码编译，详见 docs/openKylin环境搭建指南.md
+dev = [
+    "pytest>=7.0",
 ]
 
 [project.scripts]

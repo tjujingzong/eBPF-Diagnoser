@@ -90,6 +90,42 @@ class CorrelationEngine:
                             value=ctx_sw,
                         ))
 
+        # 内存 + 锁 关联 (新增: 内存分配锁争用)
+        if AnomalyType.MEMORY_ANOMALY in anomaly_types and AnomalyType.LOCK_ANOMALY in anomaly_types:
+            mem_metrics = metrics.get("mem", {}).get("system", {})
+            pgfault = mem_metrics.get("pgfault_per_sec", 0)
+            if pgfault > 50000:
+                for a in anomalies:
+                    if a.type == AnomalyType.LOCK_ANOMALY:
+                        a.evidence_chain.append(EvidenceStep(
+                            step=len(a.evidence_chain) + 1,
+                            description=f"高频缺页({pgfault}/s)与锁竞争关联，疑似内存分配锁争用加剧",
+                            metric="mem.system.pgfault_per_sec",
+                            value=pgfault,
+                        ))
+                        if a.root_cause:
+                            a.root_cause.description = "内存压力导致频繁page fault，引发内存分配锁争用"
+                            a.root_cause.category = "memory_induced_lock_contention"
+                            a.root_cause.confidence = min(a.root_cause.confidence + 0.05, 0.99)
+
+        # CPU + Syscall 关联 (新增: 高频syscall导致CPU飙高)
+        if AnomalyType.SYSCALL_ANOMALY in anomaly_types and AnomalyType.CPU_ANOMALY in anomaly_types:
+            syscall_metrics = metrics.get("syscall", {}).get("global", {})
+            total_syscalls = syscall_metrics.get("total_syscalls", 0)
+            if total_syscalls > 100000:
+                for a in anomalies:
+                    if a.type == AnomalyType.CPU_ANOMALY:
+                        a.evidence_chain.append(EvidenceStep(
+                            step=len(a.evidence_chain) + 1,
+                            description=f"高频系统调用({total_syscalls})与CPU高占用关联，syscall开销导致CPU饱和",
+                            metric="syscall.global.total_syscalls",
+                            value=total_syscalls,
+                        ))
+                        if a.root_cause and "cpu_intensive" in a.root_cause.category:
+                            a.root_cause.description = "高频系统调用导致CPU开销增加"
+                            a.root_cause.category = "cpu_syscall_overhead"
+                            a.root_cause.confidence = min(a.root_cause.confidence + 0.05, 0.99)
+
         return anomalies
 
 

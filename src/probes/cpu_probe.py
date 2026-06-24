@@ -28,10 +28,27 @@ struct global_stat {
     u64 sample_count;
 };
 
+// 调度延迟统计 (sched_wakeup → sched_switch)
+struct sched_latency {
+    u64 total_latency_ns;
+    u64 max_latency_ns;
+    u64 count;
+};
+
 BPF_HASH(proc_stats, u32, struct cpu_proc_stat);
 BPF_ARRAY(global, struct global_stat, 1);
+BPF_HASH(wakeup_ts, u32, u64);  // pid -> wakeup timestamp
+BPF_ARRAY(sched_lat, struct sched_latency, 1);
 
-// sched_switch: 上下文切换
+// sched_wakeup: 记录唤醒时间
+TRACEPOINT_PROBE(sched, sched_wakeup) {
+    u32 pid = args->pid;
+    u64 ts = bpf_ktime_get_ns();
+    wakeup_ts.update(&pid, &ts);
+    return 0;
+}
+
+// sched_switch: 上下文切换 + 计算调度延迟
 TRACEPOINT_PROBE(sched, sched_switch) {
     u32 prev_pid = args->prev_pid;
     u32 next_pid = args->next_pid;
@@ -59,6 +76,23 @@ TRACEPOINT_PROBE(sched, sched_switch) {
         new_stat.switch_count = 1;
         bpf_get_current_comm(&new_stat.comm, sizeof(new_stat.comm));
         proc_stats.update(&prev_pid, &new_stat);
+    }
+
+    // 计算next进程的调度延迟 (从wakeup到switch的时间)
+    u64 *wake_ts = wakeup_ts.lookup(&next_pid);
+    if (wake_ts) {
+        u64 now_ts = bpf_ktime_get_ns();
+        u64 latency_ns = now_ts - *wake_ts;
+        wakeup_ts.delete(&next_pid);
+
+        struct sched_latency *lat = sched_lat.lookup(&zero_idx);
+        if (lat) {
+            lat->total_latency_ns += latency_ns;
+            if (latency_ns > lat->max_latency_ns) {
+                lat->max_latency_ns = latency_ns;
+            }
+            lat->count += 1;
+        }
     }
 
     return 0;
@@ -173,6 +207,19 @@ class CpuProbe(BaseProbe):
                     except (FileNotFoundError, ProcessLookupError):
                         pass
         except Exception:
+            pass
+
+        # 6. 从BPF MAP获取调度延迟统计
+        try:
+            zero_idx = 0
+            lat = self.bpf["sched_lat"][zero_idx]
+            if lat.count > 0:
+                avg_latency_ms = lat.total_latency_ns / lat.count / 1e6
+                max_latency_ms = lat.max_latency_ns / 1e6
+                metrics["global"]["sched_avg_latency_ms"] = round(avg_latency_ms, 2)
+                metrics["global"]["sched_max_latency_ms"] = round(max_latency_ms, 2)
+                metrics["global"]["sched_delay_count"] = lat.count
+        except (IndexError, KeyError):
             pass
 
         self._prev_timestamp = now

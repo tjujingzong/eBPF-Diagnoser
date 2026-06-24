@@ -233,9 +233,16 @@ class RuleEngine:
 
     def __init__(self, config=None):
         self.rules: List[Rule] = []
+        self.config = config
         self._load_default_rules()
         if config:
             self._load_config_rules(config)
+
+    def _th(self, attr: str, default: float) -> float:
+        """从配置获取阈值，无配置时返回默认值"""
+        if self.config and hasattr(self.config.thresholds, attr):
+            return getattr(self.config.thresholds, attr)
+        return default
 
     def _load_default_rules(self):
         """加载内置默认规则"""
@@ -243,8 +250,8 @@ class RuleEngine:
         self.rules.append(Rule(
             name="cpu_intensive_compute",
             conditions=[
-                {"metric": "cpu.global.cpu_usage_percent", "op": ">", "value": 90,
-                 "description": "CPU使用率持续高于90%"},
+                {"metric": "cpu.global.cpu_usage_percent", "op": ">", "value": self._th("cpu_usage_high", 90),
+                 "description": "CPU使用率持续高于阈值"},
             ],
             anomaly_type="cpu_anomaly",
             severity="high",
@@ -264,7 +271,7 @@ class RuleEngine:
         self.rules.append(Rule(
             name="cpu_thread_contention",
             conditions=[
-                {"metric": "cpu.global.cpu_usage_percent", "op": ">", "value": 70,
+                {"metric": "cpu.global.cpu_usage_percent", "op": ">", "value": self._th("cpu_usage_warn", 70),
                  "description": "CPU使用率偏高"},
                 {"metric": "cpu.global.context_switches_per_sec", "op": ">", "value": 30000,
                  "description": "上下文切换率异常升高"},
@@ -284,11 +291,33 @@ class RuleEngine:
             ],
         ))
 
+        # CPU调度延迟规则 (新增: 基于sched_wakeup → sched_switch延迟)
+        self.rules.append(Rule(
+            name="cpu_sched_latency_high",
+            conditions=[
+                {"metric": "cpu.global.sched_avg_latency_ms", "op": ">", "value": self._th("sched_delay_high", 50),
+                 "description": "平均调度延迟过高"},
+            ],
+            anomaly_type="cpu_anomaly",
+            severity="high",
+            root_cause={
+                "description": "进程唤醒后长时间等待调度，存在CPU饱和或优先级倒置",
+                "category": "cpu_sched_latency",
+                "confidence": 0.80,
+                "reasoning": "调度延迟反映从wakeup到switch的等待时间，过高说明runqueue拥堵或CPU资源不足",
+            },
+            recommendations=[
+                "检查runqueue长度是否持续偏高",
+                "使用perf sched record分析调度热点",
+                "评估是否需要增加CPU核心或调整nice值",
+            ],
+        ))
+
         # ===== I/O异常规则 =====
         self.rules.append(Rule(
             name="io_queue_congestion",
             conditions=[
-                {"metric": "io.global.p99_latency_ms", "op": ">", "value": 50,
+                {"metric": "io.global.p99_latency_ms", "op": ">", "value": self._th("io_p99_high", 50),
                  "description": "I/O P99延迟异常升高"},
             ],
             anomaly_type="io_anomaly",
@@ -310,8 +339,8 @@ class RuleEngine:
         self.rules.append(Rule(
             name="memory_pressure",
             conditions=[
-                {"metric": "mem.system.available_percent", "op": "<", "value": 10,
-                 "description": "可用内存低于10%"},
+                {"metric": "mem.system.available_percent", "op": "<", "value": self._th("mem_available_low", 10),
+                 "description": "可用内存低于阈值"},
             ],
             anomaly_type="memory_anomaly",
             severity="high",
@@ -331,7 +360,7 @@ class RuleEngine:
         self.rules.append(Rule(
             name="memory_oom_risk",
             conditions=[
-                {"metric": "mem.system.available_percent", "op": "<", "value": 5,
+                {"metric": "mem.system.available_percent", "op": "<", "value": self._th("mem_available_low", 10) / 2,
                  "description": "可用内存极低，有OOM风险"},
                 {"metric": "mem.events.oom_kill_total", "op": ">", "value": 0,
                  "description": "已发生OOM kill事件"},
@@ -355,7 +384,7 @@ class RuleEngine:
         self.rules.append(Rule(
             name="lock_contention",
             conditions=[
-                {"metric": "lock.global.total_futex_wait_ms", "op": ">", "value": 100,
+                {"metric": "lock.global.total_futex_wait_ms", "op": ">", "value": self._th("lock_wait_high", 10) * 10,
                  "description": "futex等待时间过长"},
             ],
             anomaly_type="lock_anomaly",
@@ -377,8 +406,7 @@ class RuleEngine:
         self.rules.append(Rule(
             name="syscall_polling",
             conditions=[
-                {"metric": "syscall.global.total_syscalls", "op": ">", "value": 100000,
-                 "use_baseline": True,
+                {"metric": "syscall.global.total_syscalls", "op": ">", "value": 5000,
                  "description": "系统调用频率异常升高"},
             ],
             anomaly_type="syscall_anomaly",

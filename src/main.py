@@ -53,8 +53,8 @@ def parse_args():
         "--output", "-o",
         type=str,
         default="table",
-        choices=["json", "table", "md", "all"],
-        help="输出格式: json,table,md,all (默认: table)",
+        choices=["json", "yaml", "table", "md", "all"],
+        help="输出格式: json,yaml,table,md,all (默认: table)",
     )
     parser.add_argument(
         "--output-file", "-f",

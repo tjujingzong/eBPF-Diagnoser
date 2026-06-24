@@ -22,8 +22,17 @@ struct futex_stat {
     u64 max_wait_ns;
 };
 
+// 锁热点堆栈 (用于识别争用来源)
+#define MAX_STACK_DEPTH 10
+struct stack_trace {
+    u64 ip[MAX_STACK_DEPTH];
+    u32 depth;
+};
+
 BPF_HASH(futex_stats, u32, struct futex_stat);
 BPF_HASH(futex_start, u64, u64);  // tid -> start_ts
+BPF_STACK_TRACE(stack_traces, 1024);
+BPF_HASH(contention_stacks, int, u64);  // stack_id -> count
 
 // futex_enter
 TRACEPOINT_PROBE(syscalls, sys_enter_futex) {
@@ -68,6 +77,20 @@ TRACEPOINT_PROBE(syscalls, sys_exit_futex) {
         stat->total_wait_ns += latency_ns;
         if (latency_ns > stat->max_wait_ns) {
             stat->max_wait_ns = latency_ns;
+        }
+
+        // 如果等待时间超过阈值(1ms)，记录堆栈
+        if (latency_ns > 1000000) {
+            int stack_id = stack_traces.get_stackid(-1, 0);
+            if (stack_id >= 0) {
+                u64 *count = contention_stacks.lookup(&stack_id);
+                if (count) {
+                    *count += 1;
+                } else {
+                    u64 one = 1;
+                    contention_stacks.update(&stack_id, &one);
+                }
+            }
         }
     }
     return 0;
@@ -134,6 +157,38 @@ class LockProbe(BaseProbe):
         total_wait_ns = sum(d["total_wait_ns"] for d in futex_data.values())
         metrics["global"]["total_futex_waits"] = total_waits
         metrics["global"]["total_futex_wait_ms"] = round(total_wait_ns / 1e6, 2)
+
+        # 获取热点堆栈 (top contention stacks)
+        try:
+            top_stacks = []
+            stack_counts = {}
+            for key, val in self.bpf["contention_stacks"].items():
+                stack_id = key.value
+                count = val.value
+                if count > 0:
+                    stack_counts[stack_id] = count
+
+            # 按出现次数排序，取top 5
+            sorted_stacks = sorted(stack_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+            for stack_id, count in sorted_stacks:
+                try:
+                    stack_trace = self.bpf["stack_traces"].walk(stack_id)
+                    symbols = []
+                    for addr in stack_trace:
+                        sym = self.bpf.ksym(addr, show_offset=True)
+                        if sym:
+                            symbols.append(sym.decode('utf-8', errors='replace'))
+                    if symbols:
+                        top_stacks.append({
+                            "count": count,
+                            "stack": symbols[:10],  # 最多10帧
+                        })
+                except Exception:
+                    pass
+            metrics["lock_hotspots"] = top_stacks
+        except Exception:
+            pass
+
         return metrics
 
     def _get_comm(self, pid):

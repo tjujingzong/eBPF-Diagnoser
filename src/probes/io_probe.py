@@ -39,18 +39,21 @@ TRACEPOINT_PROBE(block, block_rq_issue) {
     // 记录请求开始时间
     io_start.update(&sector, &ts);
 
+    // 判断读写: rwbs[0] == 'W' 表示写, 'R' 表示读
+    u8 is_write = (args->rwbs[0] == 'W');
+
     // 队列深度+1
     u32 dev_key = args->dev & 0xFFFF;  // 简化设备号
     struct io_dev_stat *stat = dev_stats.lookup(&dev_key);
     if (stat) {
         stat->queue_depth += 1;
-        stat->read_count += (args->rwbd_flags & 1) ? 0 : 1;
-        stat->write_count += (args->rwbd_flags & 1) ? 1 : 0;
+        stat->read_count += is_write ? 0 : 1;
+        stat->write_count += is_write ? 1 : 0;
     } else {
         struct io_dev_stat new_stat = {};
         new_stat.queue_depth = 1;
-        new_stat.read_count = (args->rwbd_flags & 1) ? 0 : 1;
-        new_stat.write_count = (args->rwbd_flags & 1) ? 1 : 0;
+        new_stat.read_count = is_write ? 0 : 1;
+        new_stat.write_count = is_write ? 1 : 0;
         dev_stats.update(&dev_key, &new_stat);
     }
 

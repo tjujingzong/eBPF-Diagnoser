@@ -1,5 +1,5 @@
 #!/bin/bash
-# openKylin 后安装配置脚本 (Windows QEMU VM)
+# openKylin 后安装配置脚本 (VMware VM)
 # 在openKylin安装完成并启动后，通过SSH或控制台运行此脚本
 # 配置SSH、eBPF开发环境、压测工具等
 #
@@ -7,8 +7,8 @@
 #   sudo bash postinstall-openkylin-win.sh
 #
 # 或从Windows通过SSH:
-#   scp -P 2222 scripts/postinstall-openkylin-win.sh user@localhost:/tmp/
-#   ssh -p 2222 user@localhost 'sudo bash /tmp/postinstall-openkylin-win.sh'
+#   scp scripts/postinstall-openkylin-win.sh kylin:/tmp/
+#   ssh kylin 'sudo bash /tmp/postinstall-openkylin-win.sh'
 
 set -e
 
@@ -29,7 +29,7 @@ fi
 
 step "=========================================="
 step "  openKylin eBPF开发环境配置"
-step "  (Windows QEMU VM)"
+step "  (VMware VM)"
 step "=========================================="
 
 # 1. 系统更新
@@ -49,7 +49,7 @@ fi
 mkdir -p /etc/ssh
 cat >> /etc/ssh/sshd_config << 'EOF'
 
-# QEMU VM SSH 配置
+# VM SSH 配置
 PermitRootLogin yes
 PasswordAuthentication yes
 PubkeyAuthentication yes
@@ -60,7 +60,7 @@ systemctl enable ssh 2>/dev/null || systemctl enable sshd 2>/dev/null || true
 systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null || true
 
 info "SSH 服务已配置并启动"
-info "可从Windows通过: ssh -p 2222 user@localhost 连接"
+info "可从Windows通过: ssh kylin 连接"
 
 # 3. 安装eBPF开发工具链
 step "安装eBPF开发工具链..."
@@ -85,8 +85,9 @@ if command -v apt-get &>/dev/null; then
     if ! dpkg -l python3-bpfcc &>/dev/null; then
         warn "BCC包不可用，从源码安装..."
         apt-get install -y \
-            git cmake python3-dev libllvm-ocaml-dev \
+            git cmake python3-dev flex bison \
             libclang-dev libelf-dev libfl-dev \
+            liblzma-dev libpolly-17-dev \
             2>/dev/null || true
 
         if command -v git &>/dev/null; then
@@ -94,9 +95,11 @@ if command -v apt-get &>/dev/null; then
             git clone --depth=1 https://github.com/iovisor/bcc.git 2>/dev/null || true
             if [[ -d /tmp/bcc ]]; then
                 mkdir -p /tmp/bcc/build && cd /tmp/bcc/build
-                cmake .. -DPYTHON_CMD=python3 2>/dev/null || true
+                cmake .. -DPYTHON_CMD=python3 -DCMAKE_INSTALL_PREFIX=/usr 2>/dev/null || true
                 make -j$(nproc) 2>/dev/null || true
                 make install 2>/dev/null || true
+                echo /usr/lib64 | tee /etc/ld.so.conf.d/bcc.conf 2>/dev/null
+                ldconfig 2>/dev/null || true
                 info "BCC源码安装完成(可能有警告)"
             fi
         fi
@@ -128,7 +131,6 @@ step "安装压测工具..."
 if command -v apt-get &>/dev/null; then
     apt-get install -y \
         stress-ng fio sysbench \
-        linux-tools-$(uname -r) linux-tools-generic \
         hwloc numactl \
         2>/dev/null || warn "部分压测工具安装失败..."
 elif command -v dnf &>/dev/null; then
@@ -224,7 +226,7 @@ if [[ ! -d "$PROJECT_DIR" ]]; then
     chown -R "${CURRENT_USER}:${CURRENT_USER}" "$PROJECT_DIR" 2>/dev/null || true
     info "项目目录已创建: $PROJECT_DIR"
     info "请从Windows传输项目代码:"
-    info "  scp -rP 2222 . user@localhost:~/ebpf-diagnoser/"
+    info "  scp -r . kylin:~/ebpf-diagnoser/"
 else
     info "项目目录已存在: $PROJECT_DIR"
 fi
@@ -245,9 +247,9 @@ echo "  fio: $(fio --version 2>/dev/null | head -1 || echo 'N/A')"
 echo ""
 echo "下一步:"
 echo "  1. 从Windows传输项目代码:"
-echo "     scp -rP 2222 . user@localhost:~/ebpf-diagnoser/"
+echo "     scp -r . kylin:~/ebpf-diagnoser/"
 echo "  2. SSH进入VM:"
-echo "     ssh -p 2222 user@localhost"
+echo "     ssh kylin"
 echo "  3. 进入项目目录:"
 echo "     cd ~/ebpf-diagnoser"
 echo "  4. 激活虚拟环境并运行诊断工具:"

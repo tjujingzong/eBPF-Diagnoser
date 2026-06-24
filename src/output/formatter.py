@@ -1,9 +1,10 @@
 """输出格式化器
 
-支持 JSON / Markdown / 终端表格 三种输出格式
+支持 JSON / YAML / Markdown / 终端表格 四种输出格式
 """
 
 import json
+import yaml
 from datetime import datetime
 from typing import List, Dict, Optional
 
@@ -30,6 +31,28 @@ def format_json(anomalies: List[Anomaly], system_info: dict = None,
         },
     }
     return json.dumps(report, indent=2, ensure_ascii=False, default=str)
+
+
+# ───────────────────── YAML输出 ─────────────────────
+
+def format_yaml(anomalies: List[Anomaly], system_info: dict = None,
+                duration: float = 0, overhead: dict = None) -> str:
+    """格式化为YAML诊断报告"""
+    report = {
+        "version": "1.0",
+        "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "diagnosis_id": f"diag-{datetime.now().strftime('%Y%m%d-%H%M%S')}-001",
+        "anomalies": [a.to_dict() for a in anomalies],
+        "system_context": system_info or {},
+        "tool_metadata": {
+            "name": "ebpf-diagnoser",
+            "version": "1.0.0",
+            "probe_status": {},
+            "overhead": overhead or {},
+            "duration_seconds": round(duration, 1),
+        },
+    }
+    return yaml.dump(report, default_flow_style=False, allow_unicode=True, sort_keys=False, default=str)
 
 
 # ───────────────────── Markdown输出 ─────────────────────
@@ -218,6 +241,8 @@ class OutputFormatter:
         """格式化异常列表"""
         if self.format_type == "json":
             return format_json(anomalies)
+        elif self.format_type == "yaml":
+            return format_yaml(anomalies)
         elif self.format_type == "md":
             return format_markdown(anomalies)
         else:
@@ -228,6 +253,7 @@ class OutputFormatter:
         """格式化完整报告(含系统信息和开销)"""
         return {
             "json": format_json(anomalies, system_info, duration, overhead),
+            "yaml": format_yaml(anomalies, system_info, duration, overhead),
             "md": format_markdown(anomalies, system_info, duration, overhead),
             "table": format_table(anomalies),
         }

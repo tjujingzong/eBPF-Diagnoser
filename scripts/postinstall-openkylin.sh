@@ -7,7 +7,7 @@
 #   sudo bash scripts/postinstall-openkylin.sh
 #
 # 或从Windows通过SSH:
-#   ssh -p 2222 user@localhost 'sudo bash -s' < scripts/postinstall-openkylin.sh
+#   ssh kylin 'sudo bash -s' < scripts/postinstall-openkylin.sh
 
 set -e
 
@@ -46,7 +46,7 @@ fi
 # 配置SSH允许密码登录和密钥登录
 mkdir -p /etc/ssh
 cat >> /etc/ssh/sshd_config << 'EOF'
-# QEMU VM SSH 配置
+# VM SSH 配置
 PermitRootLogin yes
 PasswordAuthentication yes
 PubkeyAuthentication yes
@@ -85,8 +85,9 @@ if command -v apt-get &>/dev/null; then
     if ! dpkg -l python3-bpfcc &>/dev/null; then
         warn "BCC包不可用，从源码安装..."
         apt-get install -y \
-            git cmake python3-dev libllvm-ocaml-dev \
+            git cmake python3-dev flex bison \
             libclang-dev libelf-dev libfl-dev \
+            liblzma-dev libpolly-17-dev \
             2>/dev/null || true
 
         if command -v git &>/dev/null; then
@@ -94,9 +95,11 @@ if command -v apt-get &>/dev/null; then
             git clone --depth=1 https://github.com/iovisor/bcc.git 2>/dev/null || true
             if [[ -d /tmp/bcc ]]; then
                 mkdir -p /tmp/bcc/build && cd /tmp/bcc/build
-                cmake .. -DPYTHON_CMD=python3 2>/dev/null || true
+                cmake .. -DPYTHON_CMD=python3 -DCMAKE_INSTALL_PREFIX=/usr 2>/dev/null || true
                 make -j$(nproc) 2>/dev/null || true
                 make install 2>/dev/null || true
+                echo /usr/lib64 | tee /etc/ld.so.conf.d/bcc.conf 2>/dev/null
+                ldconfig 2>/dev/null || true
                 info "BCC源码安装完成(可能有警告)"
             fi
         fi
@@ -128,7 +131,6 @@ step "安装压测工具..."
 if command -v apt-get &>/dev/null; then
     apt-get install -y \
         stress-ng fio sysbench \
-        linux-tools-$(uname -r) linux-tools-generic \
         hwloc numactl \
         2>/dev/null || warn "部分压测工具安装失败..."
 elif command -v dnf &>/dev/null; then
@@ -230,7 +232,7 @@ echo "  stress-ng: $(stress-ng --version 2>/dev/null | head -1 || echo 'N/A')"
 echo "  fio: $(fio --version 2>/dev/null | head -1 || echo 'N/A')"
 echo ""
 echo "下一步:"
-echo "  1. 从Windows SSH连接: ssh -p 2222 user@localhost"
-echo "  2. 传输项目代码: scp -rP 2222 . user@localhost:~/ebpf-diagnoser/"
+echo "  1. 从Windows SSH连接: ssh kylin"
+echo "  2. 传输项目代码: scp -r . kylin:~/ebpf-diagnoser/"
 echo "  3. 进入项目目录运行诊断工具"
 echo ""

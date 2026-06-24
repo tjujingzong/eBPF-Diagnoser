@@ -40,22 +40,44 @@ git clone https://github.com/yourname/ebpf-diagnoser.git
 cd ebpf-diagnoser
 ```
 
-### 环境搭建 (Windows QEMU + openKylin)
+### 安装 (openKylin 2.0 SP2)
+
+openKylin 仓库中未提供 BCC 包，需从源码编译。详细步骤见 [测试报告](docs/测试报告.md) 和 [环境搭建指南](docs/openKylin环境搭建指南.md)。
+
+```bash
+# 基础工具链
+sudo apt install -y build-essential clang llvm llvm-dev libbpf-dev \
+    linux-headers-$(uname -r) libclang-dev libpolly-17-dev pkg-config
+
+# 从源码编译 BCC
+git clone --depth=1 https://github.com/iovisor/bcc.git /tmp/bcc
+cd /tmp/bcc && mkdir build && cd build
+cmake .. -DPYTHON_CMD=python3 -DCMAKE_INSTALL_PREFIX=/usr
+make -j$(nproc) && sudo make install
+echo /usr/lib64 | sudo tee /etc/ld.so.conf.d/bcc.conf && sudo ldconfig
+
+# Python 依赖
+pip install pyyaml rich
+
+# 压测工具
+sudo apt install -y fio sysbench stress-ng
+```
+
+### 环境搭建 (VMware + openKylin)
 
 > 详细步骤请参考 [openKylin环境搭建指南](docs/openKylin环境搭建指南.md)
 
 ```powershell
-# 1. 安装QEMU并下载openKylin ISO，创建VM磁盘
-.\scripts\install-openkylin-vm.ps1
+# 1. 在VMware中安装openKylin后，传输项目代码到VM
+scp -r . kylin:~/ebpf-diagnoser/
 
-# 2. 在QEMU窗口中完成openKylin安装后，配置eBPF开发环境
-.\scripts\install-openkylin-vm.ps1 -PostInstall
+# 2. SSH进入VM
+ssh kylin
 
-# 3. SSH进入VM
-ssh -p 2222 user@localhost
+# 3. 配置eBPF开发环境
+sudo bash scripts/setup_env.sh
 
-# 4. 在VM内传输并运行诊断工具
-scp -rP 2222 . user@localhost:~/ebpf-diagnoser/
+# 4. 在VM内运行诊断工具
 cd ~/ebpf-diagnoser
 sudo python3 -m src.main --probe all
 ```
@@ -63,13 +85,8 @@ sudo python3 -m src.main --probe all
 ### 环境搭建 (openKylin 直装)
 
 ```bash
-# 在openKylin系统内直接运行环境搭建脚本
+# 在openKylin系统内直接运行环境搭建脚本 (自动处理BCC编译)
 sudo bash scripts/setup_env.sh
-
-# 或手动安装依赖
-sudo apt install -y clang llvm libbpf-dev linux-headers-$(uname -r) \
-    bpfcc-tools python3-bpfcc libbpfcc-dev bpftool
-pip install pyyaml rich
 ```
 
 ### 使用方式
@@ -142,10 +159,8 @@ ebpf-diagnoser/
 ├── rules/
 │   └── cpu_rules.yaml       # 自定义规则示例
 ├── scripts/
-│   ├── install-openkylin-vm.ps1   # Windows QEMU VM安装脚本
 │   ├── postinstall-openkylin-win.sh # VM内eBPF环境配置
-│   ├── start-vm.ps1               # 快速启动VM
-│   ├── ssh-to-vm.ps1              # SSH连接VM
+│   ├── sync-to-vm.ps1               # 项目文件同步到VM
 │   ├── setup_env.sh               # 环境搭建(Linux内运行)
 │   ├── stress_cpu.sh              # CPU压测
 │   ├── stress_io.sh               # I/O压测
@@ -158,7 +173,6 @@ ebpf-diagnoser/
 ├── docker/
 │   └── openkylin-test.Dockerfile   # 兼容性测试Dockerfile
 ├── docs/                    # 文档
-├── tests/                   # 测试
 ├── pyproject.toml
 └── README.md
 ```
