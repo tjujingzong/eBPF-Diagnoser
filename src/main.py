@@ -168,6 +168,13 @@ def main():
                 time.sleep(args.interval)
                 continue
 
+            if args.verbose:
+                logger.debug("metrics keys: %s", {k: list(v.keys()) if isinstance(v, dict) else type(v).__name__ for k, v in metrics.items()})
+                # Debug: show global counters
+                for pname, pmets in metrics.items():
+                    if isinstance(pmets, dict) and 'global' in pmets:
+                        logger.debug("  %s.global = %s", pname, pmets['global'])
+
             # 聚合指标
             aggregator.update(metrics)
 
@@ -209,6 +216,14 @@ def main():
                 with open(json_path, "w") as f:
                     f.write(final_report.get("json", ""))
                 logger.info(f"JSON报告已保存: {json_path}")
+
+            if args.output in ("yaml", "all"):
+                yaml_path = args.output_file or "diagnosis_report.yaml"
+                if args.output == "all":
+                    yaml_path = yaml_path.replace(".yaml", "") + ".yaml" if args.output_file else "diagnosis_report.yaml"
+                with open(yaml_path, "w") as f:
+                    f.write(final_report.get("yaml", ""))
+                logger.info(f"YAML报告已保存: {yaml_path}")
 
             if args.output in ("md", "all"):
                 md_path = args.output_file or "diagnosis_report.md"

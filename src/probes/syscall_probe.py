@@ -6,7 +6,10 @@ tracepoint: raw_syscalls:sys_enter, raw_syscalls:sys_exit
 
 import time
 import os
+import logging
 from src.probes.base import BaseProbe
+
+logger = logging.getLogger(__name__)
 
 
 SYSCALL_NAMES_X86_64 = {
@@ -103,6 +106,26 @@ class SyscallProbe(BaseProbe):
 
     def get_bpf_obj_name(self) -> str:
         return "syscall_probe.bpf.o"
+
+    def attach(self):
+        """加载并挂载，然后设置采样率到map"""
+        super().attach()
+        # 将sample_rate写入sample_rate_map (ARRAY map, index 0)
+        try:
+            if self._loader and self._obj_index >= 0:
+                result = self._loader.send({
+                    "cmd": "WRITE_MAP_ARRAY",
+                    "obj_index": self._obj_index,
+                    "map": "sample_rate_map",
+                    "index": 0,
+                    "value": self.sample_rate,
+                })
+                if result.get("ok"):
+                    logger.debug("syscall sample_rate set to %d", self.sample_rate)
+                else:
+                    logger.warning("Failed to set sample_rate: %s", result.get("error"))
+        except Exception as e:
+            logger.warning("Failed to write sample_rate_map: %s", e)
 
     def poll(self) -> dict:
         now = time.time()

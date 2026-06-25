@@ -27,7 +27,6 @@ typedef __s8 s8;
 typedef __s16 s16;
 typedef __s32 s32;
 typedef __s64 s64;
-/* 短名称类型定义 */typedef __u8 u8;typedef __u16 u16;typedef __u32 u32;typedef __u64 u64;typedef __s8 s8;typedef __s16 s16;typedef __s32 s32;typedef __s64 s64;
 #include <bpf/btf.h>
 
 #define MAX_OBJS     8
@@ -738,6 +737,39 @@ static void cmd_detach(int id, const char *json)
 	snprintf(resp, sizeof(resp), "{\"id\":%d,\"ok\":true}\n", id);
 }
 
+static void cmd_write_map_array(int id, const char *json)
+{
+	long obj_index = json_get_int(json, "obj_index", -1);
+	const char *map_name = json_get_str(json, "map");
+	long index = json_get_int(json, "index", 0);
+	long value = json_get_int(json, "value", 0);
+
+	if (obj_index < 0 || obj_index >= nr_objects || !map_name) {
+		snprintf(resp, sizeof(resp),
+			 "{\"id\":%d,\"ok\":false,\"error\":\"invalid params\"}\n", id);
+		return;
+	}
+
+	struct loaded_obj *lo = &objects[obj_index];
+	struct bpf_map *map = find_map_by_name(lo, map_name);
+	if (!map) {
+		snprintf(resp, sizeof(resp),
+			 "{\"id\":%d,\"ok\":false,\"error\":\"map '%s' not found\"}\n", id, map_name);
+		return;
+	}
+
+	int map_fd = bpf_map__fd(map);
+	u32 key = (u32)index;
+	u32 val = (u32)value;
+	int err = bpf_map_update_elem(map_fd, &key, &val, BPF_ANY);
+	if (err) {
+		snprintf(resp, sizeof(resp),
+			 "{\"id\":%d,\"ok\":false,\"error\":\"update failed: %s\"}\n", id, strerror(errno));
+		return;
+	}
+	snprintf(resp, sizeof(resp), "{\"id\":%d,\"ok\":true}\n", id);
+}
+
 /* --- Main event loop --- */
 int main(void)
 {
@@ -771,6 +803,8 @@ int main(void)
 			cmd_resolve_ksym(id, line);
 		} else if (strcmp(cmd, "DETACH") == 0) {
 			cmd_detach(id, line);
+		} else if (strcmp(cmd, "WRITE_MAP_ARRAY") == 0) {
+			cmd_write_map_array(id, line);
 		} else if (strcmp(cmd, "QUIT") == 0) {
 			snprintf(resp, sizeof(resp), "{\"id\":%d,\"ok\":true}\n", id);
 			fputs(resp, stdout);

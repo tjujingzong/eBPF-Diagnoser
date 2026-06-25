@@ -52,7 +52,7 @@ class ProbeConfig:
     io_sample_rate: int = 1               # I/O探针采样率
     mem_sample_rate: int = 1              # 内存探针采样率
     lock_sample_rate: int = 10            # 锁探针采样率(高频,默认1/10)
-    syscall_sample_rate: int = 100        # 系统调用采样率(极高频,默认1/100)
+    syscall_sample_rate: int = 1              # 系统调用采样率(全采样)
 
     # 栈回溯(性能开销较大)
     enable_stack_trace: bool = False       # 是否启用栈回溯

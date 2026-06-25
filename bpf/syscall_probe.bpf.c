@@ -4,7 +4,13 @@
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
 
-const volatile u32 sample_rate = 100;
+/* sample_rate used via map for compatibility with libbpf .rodata handling */
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(max_entries, 1);
+	__type(key, u32);
+	__type(value, u32);
+} sample_rate_map SEC(".maps");
 
 struct syscall_stat {
 	u64 call_count;
@@ -45,10 +51,12 @@ SEC("tracepoint/raw_syscalls/sys_enter")
 int sys_enter_handler(struct trace_event_raw_sys_enter *ctx)
 {
 	u32 zero = 0;
+	u32 *rate_p = bpf_map_lookup_elem(&sample_rate_map, &zero);
+	u32 rate = rate_p ? *rate_p : 10;
 	u64 *ctr = bpf_map_lookup_elem(&sample_ctr, &zero);
 	if (ctr) {
 		u64 c = *ctr;
-		if (sample_rate > 1 && (c % sample_rate) != 0) {
+		if (rate > 1 && (c % rate) != 0) {
 			__sync_fetch_and_add(ctr, 1);
 			return 0;
 		}

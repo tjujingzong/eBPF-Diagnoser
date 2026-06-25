@@ -86,11 +86,11 @@ run_test "I/O异常检测" "io" \
     "io_anomaly" \
     "--threshold io_p99_high=0.3"
 
-# 测试3: 内存异常检测 (提高可用内存阈值以适配小内存VM)
+# 测试3: 内存异常检测 (提高可用内存阈值并加大压力以适配大swap VM)
 run_test "内存异常检测" "mem" \
-    "stress-ng --vm 4 --vm-bytes 80% --vm-keep --timeout ${DURATION}s" \
+    "stress-ng --vm 4 --vm-bytes 95% --vm-keep --timeout ${DURATION}s" \
     "memory_anomaly" \
-    "--threshold mem_available_low=50"
+    "--threshold mem_available_low=60"
 
 # 测试4: 锁竞争检测
 run_test "锁竞争检测" "lock" \
@@ -107,7 +107,12 @@ echo ""
 echo "================================================"
 echo -e "${YELLOW}测试: JSON输出格式完整性${NC}"
 echo "================================================"
-OUTPUT=$($TOOL_CMD --probe cpu --duration 5 --output json 2>&1) || true
+stress-ng --cpu 4 --cpu-method matrixprod --timeout ${DURATION}s > /dev/null 2>&1 &
+STRESS_PID=$!
+sleep 3
+OUTPUT=$($TOOL_CMD --probe cpu --duration 20 --output json 2>&1) || true
+kill $STRESS_PID 2>/dev/null || true
+wait $STRESS_PID 2>/dev/null || true
 REQUIRED_FIELDS=("type" "affected_objects" "key_metrics" "time_window" "root_cause" "evidence_chain" "recommendations")
 MISSING=()
 for field in "${REQUIRED_FIELDS[@]}"; do

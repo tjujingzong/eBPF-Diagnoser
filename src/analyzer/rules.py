@@ -13,13 +13,24 @@ class Rule:
     """单条检测规则"""
 
     def __init__(self, name: str, conditions: list, anomaly_type: str,
-                 severity: str, root_cause: dict, recommendations: list):
+                 severity: str, root_cause: dict, recommendations: list,
+                 config=None):
         self.name = name
         self.conditions = conditions  # [{'metric': 'cpu_usage', 'op': '>', 'value': 90, 'duration': 3}]
         self.anomaly_type = AnomalyType(anomaly_type)
         self.severity = Severity(severity)
         self.root_cause_template = root_cause
         self.recommendations = recommendations
+        self.config = config
+
+    def _resolve_threshold(self, cond: dict) -> float:
+        """动态解析阈值：优先从config获取，支持threshold_key引用"""
+        threshold_key = cond.get("threshold_key")
+        if threshold_key and self.config and hasattr(self.config.thresholds, threshold_key):
+            val = getattr(self.config.thresholds, threshold_key)
+            factor = cond.get("threshold_factor", 1.0)
+            return val * factor
+        return cond.get("value", 0)
 
     def evaluate(self, metrics: dict, baseline: dict) -> Optional[Anomaly]:
         """评估规则是否触发
@@ -39,7 +50,7 @@ class Rule:
             step += 1
             metric_path = cond["metric"]
             op = cond.get("op", ">")
-            threshold = cond.get("value", 0)
+            threshold = self._resolve_threshold(cond)
             use_baseline = cond.get("use_baseline", False)
             description = cond.get("description", f"{metric_path} {op} {threshold}")
 
@@ -251,6 +262,7 @@ class RuleEngine:
             name="cpu_intensive_compute",
             conditions=[
                 {"metric": "cpu.global.cpu_usage_percent", "op": ">", "value": self._th("cpu_usage_high", 90),
+                 "threshold_key": "cpu_usage_high",
                  "description": "CPU使用率持续高于阈值"},
             ],
             anomaly_type="cpu_anomaly",
@@ -266,12 +278,14 @@ class RuleEngine:
                 "使用perf record进一步定位热点函数",
                 "考虑通过cgroup限制CPU配额",
             ],
+            config=self.config,
         ))
 
         self.rules.append(Rule(
             name="cpu_thread_contention",
             conditions=[
                 {"metric": "cpu.global.cpu_usage_percent", "op": ">", "value": self._th("cpu_usage_warn", 70),
+                 "threshold_key": "cpu_usage_warn",
                  "description": "CPU使用率偏高"},
                 {"metric": "cpu.global.context_switches_per_sec", "op": ">", "value": 30000,
                  "description": "上下文切换率异常升高"},
@@ -289,6 +303,7 @@ class RuleEngine:
                 "使用perf sched分析调度延迟",
                 "考虑减少线程数或优化锁粒度",
             ],
+            config=self.config,
         ))
 
         # CPU调度延迟规则 (新增: 基于sched_wakeup → sched_switch延迟)
@@ -296,6 +311,7 @@ class RuleEngine:
             name="cpu_sched_latency_high",
             conditions=[
                 {"metric": "cpu.global.sched_avg_latency_ms", "op": ">", "value": self._th("sched_delay_high", 50),
+                 "threshold_key": "sched_delay_high",
                  "description": "平均调度延迟过高"},
             ],
             anomaly_type="cpu_anomaly",
@@ -311,6 +327,7 @@ class RuleEngine:
                 "使用perf sched record分析调度热点",
                 "评估是否需要增加CPU核心或调整nice值",
             ],
+            config=self.config,
         ))
 
         # ===== I/O异常规则 =====
@@ -318,6 +335,7 @@ class RuleEngine:
             name="io_queue_congestion",
             conditions=[
                 {"metric": "io.global.p99_latency_ms", "op": ">", "value": self._th("io_p99_high", 50),
+                 "threshold_key": "io_p99_high",
                  "description": "I/O P99延迟异常升高"},
             ],
             anomaly_type="io_anomaly",
@@ -333,6 +351,7 @@ class RuleEngine:
                 "考虑使用iostat -x 1进一步分析",
                 "评估是否需要增加I/O带宽或使用更快的存储",
             ],
+            config=self.config,
         ))
 
         # ===== 内存异常规则 =====
@@ -340,6 +359,7 @@ class RuleEngine:
             name="memory_pressure",
             conditions=[
                 {"metric": "mem.system.available_percent", "op": "<", "value": self._th("mem_available_low", 10),
+                 "threshold_key": "mem_available_low",
                  "description": "可用内存低于阈值"},
             ],
             anomaly_type="memory_anomaly",
@@ -355,12 +375,14 @@ class RuleEngine:
                 "考虑增加swap空间或物理内存",
                 "评估是否存在内存泄漏",
             ],
+            config=self.config,
         ))
 
         self.rules.append(Rule(
             name="memory_oom_risk",
             conditions=[
                 {"metric": "mem.system.available_percent", "op": "<", "value": self._th("mem_available_low", 10) / 2,
+                 "threshold_key": "mem_available_low", "threshold_factor": 0.5,
                  "description": "可用内存极低，有OOM风险"},
                 {"metric": "mem.events.oom_kill_total", "op": ">", "value": 0,
                  "description": "已发生OOM kill事件"},
@@ -378,6 +400,7 @@ class RuleEngine:
                 "考虑紧急释放非关键进程内存",
                 "调整vm.overcommit_memory和OOM策略",
             ],
+            config=self.config,
         ))
 
         # ===== 锁竞争规则 =====
@@ -385,6 +408,7 @@ class RuleEngine:
             name="lock_contention",
             conditions=[
                 {"metric": "lock.global.total_futex_wait_ms", "op": ">", "value": self._th("lock_wait_high", 10) * 10,
+                 "threshold_key": "lock_wait_high", "threshold_factor": 10.0,
                  "description": "futex等待时间过长"},
             ],
             anomaly_type="lock_anomaly",
@@ -400,6 +424,7 @@ class RuleEngine:
                 "检查热点锁的临界区大小",
                 "考虑优化锁粒度或使用无锁数据结构",
             ],
+            config=self.config,
         ))
 
         # ===== 系统调用异常规则 =====
@@ -421,6 +446,7 @@ class RuleEngine:
                 "检查高频syscall类型和调用进程",
                 "评估是否可将轮询替换为事件驱动",
             ],
+            config=self.config,
         ))
 
     def _load_config_rules(self, config):
