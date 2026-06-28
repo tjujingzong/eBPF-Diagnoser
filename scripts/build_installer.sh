@@ -24,7 +24,7 @@ make -C "$PROJECT_DIR" all
 # 2. 创建staging目录布局
 echo "[2/4] 收集文件..."
 PKG="$STAGING/ebpf-diagnoser"
-mkdir -p "$PKG"/{bin,bpf,src,config,rules}
+mkdir -p "$PKG"/{bin,bpf,src,config}
 
 # Python源码
 cp -r "$PROJECT_DIR/src/"* "$PKG/src/"
@@ -35,9 +35,8 @@ cp "$PROJECT_DIR/build/bpf/"*.bpf.o "$PKG/bpf/"
 # C loader二进制
 cp "$PROJECT_DIR/build/bin/bpf_loader" "$PKG/bin/"
 
-# 配置文件
+# 配置文件 (含自定义规则)
 cp -r "$PROJECT_DIR/config/"* "$PKG/config/"
-cp -r "$PROJECT_DIR/rules/"* "$PKG/rules/"
 
 # pyproject.toml
 cp "$PROJECT_DIR/pyproject.toml" "$PKG/"

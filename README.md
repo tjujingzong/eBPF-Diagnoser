@@ -175,10 +175,10 @@ ebpf-diagnoser/
 │   └── output/
 │       └── formatter.py         # JSON/YAML/Markdown/终端表格
 ├── config/
-│   └── default.yaml             # 默认配置(阈值+探针+输出)
-├── rules/
+│   ├── default.yaml             # 默认配置(阈值+探针+输出)
 │   └── cpu_rules.yaml           # 自定义规则示例
 ├── scripts/
+│   ├── test_bpf_load.c          # BPF加载测试程序
 │   ├── setup_env.sh             # 环境搭建(Linux内运行)
 │   ├── run_tests.sh             # 一键测试(7项自动验证)
 │   ├── benchmark_overhead.sh    # 性能开销基准测试
@@ -195,8 +195,6 @@ ebpf-diagnoser/
 │   ├── 测试报告.md               # 测试报告+环境搭建
 │   ├── openKylin环境搭建指南.md  # openKylin环境详细指南
 │   └── 题目要求.md               # 竞赛题目要求
-├── docker/
-│   └── openkylin-test.Dockerfile # 容器化测试
 ├── Makefile                     # 编译脚本(BPF+loader)
 ├── pyproject.toml               # Python包配置
 └── README.md

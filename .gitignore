@@ -30,7 +30,7 @@ diagnosis_report.md
 *.log
 
 # Compiled binaries
-test_bpf_load
+scripts/test_bpf_load
 bpf/**/*.o
 bpf/loader/bpf_loader
 
@@ -38,3 +38,5 @@ bpf/loader/bpf_loader
 *.vmdk
 *.vmx
 *.nvram
+
+初赛作品提交模板/

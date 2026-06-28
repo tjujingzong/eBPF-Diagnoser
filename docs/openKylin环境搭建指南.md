@@ -131,7 +131,7 @@ sudo vmhgfs-fuse .host:/eBPF-Diagnoser ~/ebpf-diagnoser -o allow_other
 
 # 验证挂载成功
 ls ~/ebpf-diagnoser/
-# 应看到: config docker docs pyproject.toml README.md rules scripts src
+# 应看到: config docs pyproject.toml README.md scripts src
 ```
 
 ### 4. 设置开机自动挂载（可选）

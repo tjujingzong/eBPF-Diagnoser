@@ -451,7 +451,7 @@ class RuleEngine:
 
     def _load_config_rules(self, config):
         """从配置文件加载自定义规则"""
-        rules_dir = os.path.join(os.path.dirname(__file__), "..", "..", "rules")
+        rules_dir = os.path.join(os.path.dirname(__file__), "..", "..", "config")
         for filename in os.listdir(rules_dir):
             if filename.endswith(".yaml") or filename.endswith(".yml"):
                 try:
