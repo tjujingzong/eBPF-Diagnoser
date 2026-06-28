@@ -6,7 +6,6 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-TOOL_CMD="sudo python3 -m src.main"
 DURATION=30  # 每项测试时长
 PASS=0
 FAIL=0
@@ -16,6 +15,13 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
+
+# 优先使用 ebpf-diagnoser CLI，回退到 python -m src.main
+if command -v ebpf-diagnoser &> /dev/null; then
+    TOOL_CMD="sudo ebpf-diagnoser run"
+else
+    TOOL_CMD="sudo python3 -m src.main"
+fi
 
 run_test() {
     local test_name="$1"

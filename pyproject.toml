@@ -10,6 +10,7 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
 dependencies = [
+    "click>=8.0",
     "pyyaml>=6.0",
     "rich>=13.0",
 ]
@@ -23,7 +24,7 @@ dev = [
 ]
 
 [project.scripts]
-ebpf-diagnoser = "src.main:main"
+ebpf-diagnoser = "src.cli:cli"
 
 [tool.setuptools.packages.find]
 where = ["."]

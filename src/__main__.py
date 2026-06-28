@@ -1,9 +1,11 @@
 """ebpf-diagnoser 入口点
 
-支持 python3 -m src.main 方式运行
+支持以下运行方式:
+    ebpf-diagnoser <command>         # pip install后直接使用
+    python -m src <command>          # 模块方式运行
 """
 
-from src.main import main
+from src.cli import cli
 
 if __name__ == "__main__":
-    main()
+    cli()
