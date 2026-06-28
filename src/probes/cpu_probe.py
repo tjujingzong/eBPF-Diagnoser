@@ -70,11 +70,13 @@ class CpuProbe(BaseProbe):
                         self._proc_cpu_prev[int(pid_dir)] = total_ticks
 
                         if cpu_pct > 0.5:
-                            procs.append({
-                                "pid": int(pid_dir),
-                                "comm": comm,
-                                "cpu_percent": round(cpu_pct, 1),
-                            })
+                            procs.append(
+                                {
+                                    "pid": int(pid_dir),
+                                    "comm": comm,
+                                    "cpu_percent": round(cpu_pct, 1),
+                                }
+                            )
                     except (FileNotFoundError, ValueError, ProcessLookupError, IndexError):
                         continue
             except FileNotFoundError:
@@ -143,9 +145,15 @@ class CpuProbe(BaseProbe):
                 result["cpu_usage_percent"] = round((1 - dt_idle / dt_total) * 100, 1)
                 result["cpu_iowait_percent"] = round(dt_iowait / dt_total * 100, 1)
                 result["cpu_user_percent"] = round(
-                    (proc_stat.get("user", 0) - self._prev_cpu_stat.get("user", 0)) / dt_total * 100, 1
+                    (proc_stat.get("user", 0) - self._prev_cpu_stat.get("user", 0))
+                    / dt_total
+                    * 100,
+                    1,
                 )
                 result["cpu_system_percent"] = round(
-                    (proc_stat.get("system", 0) - self._prev_cpu_stat.get("system", 0)) / dt_total * 100, 1
+                    (proc_stat.get("system", 0) - self._prev_cpu_stat.get("system", 0))
+                    / dt_total
+                    * 100,
+                    1,
                 )
         return result

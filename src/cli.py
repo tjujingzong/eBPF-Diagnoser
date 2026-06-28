@@ -39,6 +39,7 @@ OUTPUT_CHOICES = ["json", "yaml", "table", "md", "all"]
 #  CLI Group
 # ═══════════════════════════════════════════════════════════════════
 
+
 @click.group()
 @click.version_option(package_name="ebpf-diagnoser")
 @click.option("--verbose", "-v", is_flag=True, help="详细输出模式")
@@ -67,43 +68,50 @@ def _setup_logging(verbose: bool):
 #  ebpf-diagnoser run
 # ═══════════════════════════════════════════════════════════════════
 
+
 @cli.command()
 @click.option(
-    "--probe", "-p",
+    "--probe",
+    "-p",
     type=str,
     default="all",
     help="指定加载的探针，逗号分隔。可选: cpu,io,mem,lock,syscall,all",
     show_default=True,
 )
 @click.option(
-    "--output", "-o",
+    "--output",
+    "-o",
     type=click.Choice(OUTPUT_CHOICES),
     default="table",
     help="输出格式",
     show_default=True,
 )
 @click.option(
-    "--output-file", "-f",
+    "--output-file",
+    "-f",
     type=str,
     default=None,
     help="输出文件路径 (默认: stdout)",
 )
 @click.option(
-    "--duration", "-d",
+    "--duration",
+    "-d",
     type=int,
     default=0,
     help="运行时长(秒)，0=持续运行",
     show_default=True,
 )
 @click.option(
-    "--interval", "-i",
+    "--interval",
+    "-i",
     type=float,
     default=1.0,
     help="指标采集间隔(秒)",
     show_default=True,
 )
 @click.option(
-    "--config", "-c",
+    "--config",
+    "-c",
     "config_path",
     type=click.Path(exists=True),
     default=None,
@@ -225,8 +233,10 @@ def run(ctx, probe, output, output_file, duration, interval, config_path, thresh
             if ctx.obj["verbose"]:
                 logger.debug(
                     "metrics keys: %s",
-                    {k: list(v.keys()) if isinstance(v, dict) else type(v).__name__
-                     for k, v in metrics.items()},
+                    {
+                        k: list(v.keys()) if isinstance(v, dict) else type(v).__name__
+                        for k, v in metrics.items()
+                    },
                 )
 
             # 聚合指标
@@ -271,7 +281,11 @@ def run(ctx, probe, output, output_file, duration, interval, config_path, thresh
             if output in ("json", "all"):
                 json_path = output_file or "diagnosis_report.json"
                 if output == "all":
-                    json_path = json_path.replace(".json", "") + ".json" if output_file else "diagnosis_report.json"
+                    json_path = (
+                        json_path.replace(".json", "") + ".json"
+                        if output_file
+                        else "diagnosis_report.json"
+                    )
                 with open(json_path, "w") as f:
                     f.write(final_report.get("json", ""))
                 saved_files.append(json_path)
@@ -279,7 +293,11 @@ def run(ctx, probe, output, output_file, duration, interval, config_path, thresh
             if output in ("yaml", "all"):
                 yaml_path = output_file or "diagnosis_report.yaml"
                 if output == "all":
-                    yaml_path = yaml_path.replace(".yaml", "") + ".yaml" if output_file else "diagnosis_report.yaml"
+                    yaml_path = (
+                        yaml_path.replace(".yaml", "") + ".yaml"
+                        if output_file
+                        else "diagnosis_report.yaml"
+                    )
                 with open(yaml_path, "w") as f:
                     f.write(final_report.get("yaml", ""))
                 saved_files.append(yaml_path)
@@ -287,7 +305,9 @@ def run(ctx, probe, output, output_file, duration, interval, config_path, thresh
             if output in ("md", "all"):
                 md_path = output_file or "diagnosis_report.md"
                 if output == "all":
-                    md_path = md_path.replace(".md", "") + ".md" if output_file else "diagnosis_report.md"
+                    md_path = (
+                        md_path.replace(".md", "") + ".md" if output_file else "diagnosis_report.md"
+                    )
                 with open(md_path, "w") as f:
                     f.write(final_report.get("md", ""))
                 saved_files.append(md_path)
@@ -323,6 +343,7 @@ def _print_banner(probe_names, output, interval, duration):
 # ═══════════════════════════════════════════════════════════════════
 #  ebpf-diagnoser status
 # ═══════════════════════════════════════════════════════════════════
+
 
 @cli.command()
 @click.option("--verbose", "-v", is_flag=True, help="显示详细信息")
@@ -361,7 +382,9 @@ def status(verbose):
     # 5. eBPF系统支持
     bpf_support = False
     if is_linux:
-        bpf_support = os.path.isdir("/sys/kernel/tracing") or os.path.isdir("/sys/kernel/debug/tracing")
+        bpf_support = os.path.isdir("/sys/kernel/tracing") or os.path.isdir(
+            "/sys/kernel/debug/tracing"
+        )
     checks.append(("eBPF/tracefs", "已挂载" if bpf_support else "未挂载", bpf_support))
 
     # 6. libbpf库
@@ -369,7 +392,9 @@ def status(verbose):
     try:
         result = subprocess.run(
             ["ldconfig", "-p"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         libbpf_ok = "libbpf.so" in result.stdout
     except Exception:
@@ -381,7 +406,9 @@ def status(verbose):
     try:
         result = subprocess.run(
             ["clang", "--version"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         clang_ok = result.returncode == 0
     except Exception:
@@ -395,11 +422,13 @@ def status(verbose):
     if os.path.isdir(bpf_obj_dir):
         bpf_files = [f for f in os.listdir(bpf_obj_dir) if f.endswith(".bpf.o")]
         bpf_compiled = len(bpf_files) >= 5
-    checks.append((
-        "BPF程序",
-        f"已编译 ({len(bpf_files)}个)" if bpf_compiled else "未编译 (请运行 make bpf)",
-        bpf_compiled,
-    ))
+    checks.append(
+        (
+            "BPF程序",
+            f"已编译 ({len(bpf_files)}个)" if bpf_compiled else "未编译 (请运行 make bpf)",
+            bpf_compiled,
+        )
+    )
 
     # 9. bpf_loader
     loader_ok = False
@@ -412,7 +441,9 @@ def status(verbose):
         if os.path.isfile(os.path.normpath(path)):
             loader_ok = True
             break
-    checks.append(("bpf_loader", "已编译" if loader_ok else "未编译 (请运行 make loader)", loader_ok))
+    checks.append(
+        ("bpf_loader", "已编译" if loader_ok else "未编译 (请运行 make loader)", loader_ok)
+    )
 
     # 10. Python依赖
     deps_ok = True
@@ -470,7 +501,9 @@ def _print_fix_hints(checks):
             elif name == "Python依赖":
                 hints.append("  运行: [bold]pip install -e .[/bold]")
             elif name == "eBPF/tracefs":
-                hints.append("  挂载tracefs: [bold]sudo mount -t tracefs nodev /sys/kernel/tracing[/bold]")
+                hints.append(
+                    "  挂载tracefs: [bold]sudo mount -t tracefs nodev /sys/kernel/tracing[/bold]"
+                )
 
     if hints:
         console.print("\n[bold]修复建议:[/bold]")
@@ -482,15 +515,18 @@ def _print_fix_hints(checks):
 #  ebpf-diagnoser test
 # ═══════════════════════════════════════════════════════════════════
 
+
 @cli.command()
 @click.option(
-    "--probe", "-p",
+    "--probe",
+    "-p",
     type=str,
     default=None,
     help="只测试指定探针 (默认: 全部)",
 )
 @click.option(
-    "--duration", "-d",
+    "--duration",
+    "-d",
     type=int,
     default=30,
     help="每项测试时长(秒)",
@@ -578,18 +614,20 @@ def test(probe, duration, verbose):
             console.print(f"可选探针: {', '.join(PROBE_CHOICES)}")
             sys.exit(1)
 
-    console.print(Panel(
-        f"[bold]eBPF Diagnoser 功能测试[/bold]\n"
-        f"测试项: {len(test_cases)}  每项时长: {duration}s",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel(
+            f"[bold]eBPF Diagnoser 功能测试[/bold]\n"
+            f"测试项: {len(test_cases)}  每项时长: {duration}s",
+            border_style="cyan",
+        )
+    )
 
     pass_count = 0
     fail_count = 0
     results = []
 
     for tc in test_cases:
-        console.print(f"\n[cyan]{'='*60}[/cyan]")
+        console.print(f"\n[cyan]{'=' * 60}[/cyan]")
         console.print(f"[bold yellow]测试: {tc['name']}[/bold yellow]")
         console.print(f"探针: {tc['probe']}  压测命令: {tc['stress'][:50]}...")
 
@@ -610,8 +648,10 @@ def test(probe, duration, verbose):
 
             # 启动压测
             stress_proc = subprocess.Popen(
-                tc["stress"], shell=True,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                tc["stress"],
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
             time.sleep(3)  # 等压测起来
 
@@ -661,12 +701,14 @@ def test(probe, duration, verbose):
                 pass
 
     # JSON输出格式测试
-    console.print(f"\n[cyan]{'='*60}[/cyan]")
+    console.print(f"\n[cyan]{'=' * 60}[/cyan]")
     console.print("[bold yellow]测试: JSON输出格式完整性[/bold yellow]")
 
     stress_proc = subprocess.Popen(
         f"stress-ng --cpu 4 --cpu-method matrixprod --timeout {duration}s",
-        shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        shell=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     time.sleep(3)
 
@@ -730,7 +772,7 @@ def test(probe, duration, verbose):
         pass
 
     # 汇总
-    console.print(f"\n[cyan]{'='*60}[/cyan]")
+    console.print(f"\n[cyan]{'=' * 60}[/cyan]")
     console.print("[bold]测试结果汇总[/bold]\n")
 
     summary_table = Table(box=box.SIMPLE)
@@ -741,7 +783,9 @@ def test(probe, duration, verbose):
         summary_table.add_row(name, f"[{style}]{result}[/{style}]")
     console.print(summary_table)
 
-    console.print(f"\n通过: [green]{pass_count}[/green]  失败: [red]{fail_count}[/red]  总计: {pass_count + fail_count}")
+    console.print(
+        f"\n通过: [green]{pass_count}[/green]  失败: [red]{fail_count}[/red]  总计: {pass_count + fail_count}"
+    )
 
     if fail_count == 0:
         console.print("\n[bold green]所有测试通过！[/bold green]")
@@ -754,6 +798,7 @@ def test(probe, duration, verbose):
 #  ebpf-diagnoser config
 # ═══════════════════════════════════════════════════════════════════
 
+
 @cli.group()
 def config():
     """配置管理
@@ -764,7 +809,9 @@ def config():
 
 
 @config.command("show")
-@click.option("--format", "-f", "fmt", type=click.Choice(["yaml", "json"]), default="yaml", help="输出格式")
+@click.option(
+    "--format", "-f", "fmt", type=click.Choice(["yaml", "json"]), default="yaml", help="输出格式"
+)
 def config_show(fmt):
     """显示当前生效的配置"""
     from src.config import load_config, DEFAULT_CONFIG_PATHS
@@ -778,21 +825,26 @@ def config_show(fmt):
             loaded_path = path
             break
 
-    console.print(Panel(
-        f"[bold]配置来源:[/bold] {loaded_path or '代码默认值'}",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel(
+            f"[bold]配置来源:[/bold] {loaded_path or '代码默认值'}",
+            border_style="cyan",
+        )
+    )
 
     if fmt == "json":
         console.print(json.dumps(cfg.to_dict(), indent=2, ensure_ascii=False))
     else:
         import yaml
-        console.print(yaml.dump(
-            cfg.to_dict(),
-            default_flow_style=False,
-            allow_unicode=True,
-            sort_keys=False,
-        ))
+
+        console.print(
+            yaml.dump(
+                cfg.to_dict(),
+                default_flow_style=False,
+                allow_unicode=True,
+                sort_keys=False,
+            )
+        )
 
 
 @config.command("init")
@@ -818,6 +870,7 @@ def config_init(force):
     os.makedirs(user_config_dir, exist_ok=True)
 
     import shutil
+
     shutil.copy2(builtin_config, user_config_path)
 
     console.print(f"[green]配置已初始化到: {user_config_path}[/green]")

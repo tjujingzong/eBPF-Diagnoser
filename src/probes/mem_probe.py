@@ -42,17 +42,27 @@ class MemProbe(BaseProbe):
                 if swap_total > 0:
                     swap_free = meminfo.get("SwapFree", 0)
                     metrics["system"]["swap_used_mb"] = round((swap_total - swap_free) / 1024, 1)
-                    metrics["system"]["swap_used_percent"] = round((swap_total - swap_free) / swap_total * 100, 1)
+                    metrics["system"]["swap_used_percent"] = round(
+                        (swap_total - swap_free) / swap_total * 100, 1
+                    )
 
         # 2. /proc/vmstat
         vmstat = self._read_vmstat()
         if vmstat and self._prev_vmstat:
             dt = now - self._prev_timestamp if self._prev_timestamp else 1
             if dt > 0:
-                metrics["system"]["pgfault_per_sec"] = self._delta_rate(vmstat, self._prev_vmstat, "pgfault", dt)
-                metrics["system"]["pgmajfault_per_sec"] = self._delta_rate(vmstat, self._prev_vmstat, "pgmajfault", dt)
-                metrics["system"]["pswpin_per_sec"] = self._delta_rate(vmstat, self._prev_vmstat, "pswpin", dt)
-                metrics["system"]["pswpout_per_sec"] = self._delta_rate(vmstat, self._prev_vmstat, "pswpout", dt)
+                metrics["system"]["pgfault_per_sec"] = self._delta_rate(
+                    vmstat, self._prev_vmstat, "pgfault", dt
+                )
+                metrics["system"]["pgmajfault_per_sec"] = self._delta_rate(
+                    vmstat, self._prev_vmstat, "pgmajfault", dt
+                )
+                metrics["system"]["pswpin_per_sec"] = self._delta_rate(
+                    vmstat, self._prev_vmstat, "pswpin", dt
+                )
+                metrics["system"]["pswpout_per_sec"] = self._delta_rate(
+                    vmstat, self._prev_vmstat, "pswpout", dt
+                )
 
         self._prev_vmstat = vmstat
 
@@ -68,10 +78,20 @@ class MemProbe(BaseProbe):
                 dt = now - self._prev_timestamp
                 if dt > 0:
                     metrics["events"]["direct_reclaim_per_sec"] = round(
-                        (curr_events["direct_reclaim_count"] - self._prev_mem_events.get("direct_reclaim_count", 0)) / dt, 2
+                        (
+                            curr_events["direct_reclaim_count"]
+                            - self._prev_mem_events.get("direct_reclaim_count", 0)
+                        )
+                        / dt,
+                        2,
                     )
                     metrics["events"]["kswapd_wake_per_sec"] = round(
-                        (curr_events["kswapd_wake_count"] - self._prev_mem_events.get("kswapd_wake_count", 0)) / dt, 2
+                        (
+                            curr_events["kswapd_wake_count"]
+                            - self._prev_mem_events.get("kswapd_wake_count", 0)
+                        )
+                        / dt,
+                        2,
                     )
 
             metrics["events"]["direct_reclaim_total"] = curr_events["direct_reclaim_count"]
@@ -121,7 +141,9 @@ class MemProbe(BaseProbe):
                     with open(f"/proc/{pid_dir}/comm") as f:
                         comm = f.read().strip()
                     if rss_mb > 1:
-                        procs.append({"pid": int(pid_dir), "comm": comm, "rss_mb": round(rss_mb, 1)})
+                        procs.append(
+                            {"pid": int(pid_dir), "comm": comm, "rss_mb": round(rss_mb, 1)}
+                        )
                 except (FileNotFoundError, ProcessLookupError, ValueError):
                     continue
         except FileNotFoundError:

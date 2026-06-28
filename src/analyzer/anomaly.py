@@ -11,6 +11,7 @@ from datetime import datetime
 
 class AnomalyType(str, Enum):
     """异常类型"""
+
     CPU_ANOMALY = "cpu_anomaly"
     IO_ANOMALY = "io_anomaly"
     MEMORY_ANOMALY = "memory_anomaly"
@@ -20,6 +21,7 @@ class AnomalyType(str, Enum):
 
 class Severity(str, Enum):
     """严重程度"""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -29,12 +31,13 @@ class Severity(str, Enum):
 @dataclass
 class EvidenceStep:
     """证据链中的一步"""
-    step: int                                    # 步骤序号
-    description: str                              # 描述
-    metric: str                                   # 指标名
-    value: Any                                    # 当前值
-    baseline: Optional[float] = None              # 基线值
-    timestamp: Optional[str] = None               # 时间戳
+
+    step: int  # 步骤序号
+    description: str  # 描述
+    metric: str  # 指标名
+    value: Any  # 当前值
+    baseline: Optional[float] = None  # 基线值
+    timestamp: Optional[str] = None  # 时间戳
 
     def to_dict(self) -> dict:
         return {
@@ -50,7 +53,8 @@ class EvidenceStep:
 @dataclass
 class AffectedObject:
     """受影响的对象(进程/线程/设备/文件)"""
-    object_type: str                              # process, thread, device, file, lock, syscall
+
+    object_type: str  # process, thread, device, file, lock, syscall
     pid: Optional[int] = None
     tid: Optional[int] = None
     comm: Optional[str] = None
@@ -81,10 +85,11 @@ class AffectedObject:
 @dataclass
 class RootCause:
     """疑似根因"""
-    description: str                              # 根因描述
-    category: str                                 # 根因类别
-    confidence: float                             # 置信度(0-1)
-    reasoning: str                                # 推理过程
+
+    description: str  # 根因描述
+    category: str  # 根因类别
+    confidence: float  # 置信度(0-1)
+    reasoning: str  # 推理过程
 
     def to_dict(self) -> dict:
         return {
@@ -98,14 +103,15 @@ class RootCause:
 @dataclass
 class Anomaly:
     """异常事件"""
-    type: AnomalyType                             # 异常类型
-    severity: Severity                            # 严重程度
-    confidence: float                             # 检测置信度(0-1)
-    time_window: Dict[str, str]                   # 异常时间段
-    affected_objects: List[AffectedObject]         # 受影响对象
-    key_metrics: Dict[str, Any]                   # 关键指标
-    evidence_chain: List[EvidenceStep]            # 证据链
-    root_cause: Optional[RootCause] = None        # 疑似根因
+
+    type: AnomalyType  # 异常类型
+    severity: Severity  # 严重程度
+    confidence: float  # 检测置信度(0-1)
+    time_window: Dict[str, str]  # 异常时间段
+    affected_objects: List[AffectedObject]  # 受影响对象
+    key_metrics: Dict[str, Any]  # 关键指标
+    evidence_chain: List[EvidenceStep]  # 证据链
+    root_cause: Optional[RootCause] = None  # 疑似根因
     recommendations: List[str] = field(default_factory=list)  # 建议措施
 
     def to_dict(self) -> dict:

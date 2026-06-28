@@ -88,5 +88,5 @@ class IoProbe(BaseProbe):
         for bucket in sorted(hist.keys()):
             cumulative += hist[bucket]
             if cumulative >= target:
-                return 2 ** bucket
+                return 2**bucket
         return 2 ** max(hist.keys())

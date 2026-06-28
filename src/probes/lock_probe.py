@@ -52,7 +52,8 @@ class LockProbe(BaseProbe):
                         wait_rate = wait_delta / dt
                         comm = self._get_comm(pid)
                         metrics["futex_per_process"][pid] = {
-                            "pid": pid, "comm": comm,
+                            "pid": pid,
+                            "comm": comm,
                             "futex_wait_per_sec": round(wait_rate, 1),
                             "avg_wait_ms": round(avg_wait_ms, 2),
                             "max_wait_ms": round(max_wait_ms, 2),
@@ -98,10 +99,12 @@ class LockProbe(BaseProbe):
                         if sym:
                             symbols.append(sym)
                     if symbols:
-                        top_stacks.append({
-                            "count": info["count"],
-                            "stack": symbols[:10],
-                        })
+                        top_stacks.append(
+                            {
+                                "count": info["count"],
+                                "stack": symbols[:10],
+                            }
+                        )
 
             metrics["lock_hotspots"] = top_stacks
         except Exception:

@@ -21,6 +21,8 @@ dependencies = [
 # Fedora: sudo dnf install libbpf elfutils-libelf zlib
 dev = [
     "pytest>=7.0",
+    "ruff>=0.4",
+    "codespell>=2.2",
 ]
 
 [project.scripts]
@@ -29,3 +31,40 @@ ebpf-diagnoser = "src.cli:cli"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["src*"]
+
+# ───────────────────── Ruff 配置 ─────────────────────
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "E501",   # line too long (formatter handles this)
+    "B008",   # function call in default argument (click decorators)
+    "SIM108", # use ternary operator (readability)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+# ───────────────────── Codespell 配置 ─────────────────────
+[tool.codespell]
+skip = "*.pyc,build/,dist/,*.egg-info,.git"
+ignore-words-list = "nd,sync,ist,thresold,hda,urat,struct,ser,ans,subprocess,pth,ot,cr,stdio,deque,warmup,hist,creat,anom,ie,fo,ist"
+builtin = "clear,rare,informal,usage,code,names"

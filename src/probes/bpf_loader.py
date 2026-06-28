@@ -75,9 +75,7 @@ class BpfLoader:
                 response_line = self._proc.stdout.readline()
                 if not response_line:
                     stderr_output = self._proc.stderr.read(4096) if self._proc.stderr else ""
-                    raise RuntimeError(
-                        f"bpf_loader 进程意外退出。stderr: {stderr_output}"
-                    )
+                    raise RuntimeError(f"bpf_loader 进程意外退出。stderr: {stderr_output}")
                 return json.loads(response_line)
             except (BrokenPipeError, json.JSONDecodeError) as e:
                 stderr_output = ""
@@ -85,9 +83,7 @@ class BpfLoader:
                     stderr_output = self._proc.stderr.read(4096)
                 except Exception:
                     pass
-                raise RuntimeError(
-                    f"bpf_loader 通信失败: {e}。stderr: {stderr_output}"
-                )
+                raise RuntimeError(f"bpf_loader 通信失败: {e}。stderr: {stderr_output}")
 
     def shutdown(self):
         if self._proc and self._proc.poll() is None:

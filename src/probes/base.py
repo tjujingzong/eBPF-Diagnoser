@@ -30,8 +30,7 @@ def find_bpf_obj(name: str) -> str:
         if os.path.isfile(path):
             return path
     raise FileNotFoundError(
-        f"BPF对象文件 '{name}' 未找到。请先运行 'make bpf' 编译。"
-        f"搜索路径: {_BPF_OBJ_SEARCH_PATHS}"
+        f"BPF对象文件 '{name}' 未找到。请先运行 'make bpf' 编译。搜索路径: {_BPF_OBJ_SEARCH_PATHS}"
     )
 
 
@@ -66,36 +65,45 @@ class BaseProbe(ABC):
         self._loader = BpfLoader.get_instance()
         obj_path = find_bpf_obj(self.get_bpf_obj_name())
 
-        result = self._loader.send({
-            "cmd": "LOAD",
-            "obj_path": obj_path,
-            "sample_rate": self.sample_rate,
-        })
+        result = self._loader.send(
+            {
+                "cmd": "LOAD",
+                "obj_path": obj_path,
+                "sample_rate": self.sample_rate,
+            }
+        )
         if not result.get("ok"):
             raise RuntimeError(f"BPF加载失败 ({self.get_bpf_obj_name()}): {result.get('error')}")
         self._obj_index = result.get("obj_index", -1)
 
-        result = self._loader.send({
-            "cmd": "ATTACH",
-            "obj_index": self._obj_index,
-        })
+        result = self._loader.send(
+            {
+                "cmd": "ATTACH",
+                "obj_index": self._obj_index,
+            }
+        )
         if not result.get("ok"):
             raise RuntimeError(f"BPF挂载失败 ({self.get_bpf_obj_name()}): {result.get('error')}")
 
         self._start_time = time.time()
         self._start_cpu_time = resource.getrusage(resource.RUSAGE_SELF).ru_utime
         self._attached = True
-        logger.info("探针已挂载: %s (attached=%d programs)",
-                     self.get_bpf_obj_name(), result.get("attached", 0))
+        logger.info(
+            "探针已挂载: %s (attached=%d programs)",
+            self.get_bpf_obj_name(),
+            result.get("attached", 0),
+        )
 
     def detach(self):
         """卸载BPF程序"""
         if self._loader and self._obj_index >= 0:
             try:
-                self._loader.send({
-                    "cmd": "DETACH",
-                    "obj_index": self._obj_index,
-                })
+                self._loader.send(
+                    {
+                        "cmd": "DETACH",
+                        "obj_index": self._obj_index,
+                    }
+                )
             except Exception as e:
                 logger.warning("BPF卸载异常: %s", e)
             self._obj_index = -1
@@ -109,12 +117,14 @@ class BaseProbe(ABC):
         """读取BPF ARRAY map的元素"""
         if not self._loader or self._obj_index < 0:
             return {}
-        result = self._loader.send({
-            "cmd": "READ_MAP_ARRAY",
-            "obj_index": self._obj_index,
-            "map": map_name,
-            "index": index,
-        })
+        result = self._loader.send(
+            {
+                "cmd": "READ_MAP_ARRAY",
+                "obj_index": self._obj_index,
+                "map": map_name,
+                "index": index,
+            }
+        )
         if result.get("ok"):
             return result.get("data", {})
         logger.debug("READ_MAP_ARRAY 失败: %s - %s", map_name, result.get("error"))
@@ -124,12 +134,14 @@ class BaseProbe(ABC):
         """读取BPF HASH map的全部条目，返回 [{key, value}, ...]"""
         if not self._loader or self._obj_index < 0:
             return []
-        result = self._loader.send({
-            "cmd": "READ_MAP_HASH",
-            "obj_index": self._obj_index,
-            "map": map_name,
-            "max_entries": max_entries,
-        })
+        result = self._loader.send(
+            {
+                "cmd": "READ_MAP_HASH",
+                "obj_index": self._obj_index,
+                "map": map_name,
+                "max_entries": max_entries,
+            }
+        )
         if result.get("ok"):
             return result.get("entries", [])
         logger.debug("READ_MAP_HASH 失败: %s - %s", map_name, result.get("error"))
@@ -139,12 +151,14 @@ class BaseProbe(ABC):
         """读取栈追踪，返回地址列表"""
         if not self._loader or self._obj_index < 0:
             return []
-        result = self._loader.send({
-            "cmd": "READ_STACK",
-            "obj_index": self._obj_index,
-            "map": map_name,
-            "stack_id": stack_id,
-        })
+        result = self._loader.send(
+            {
+                "cmd": "READ_STACK",
+                "obj_index": self._obj_index,
+                "map": map_name,
+                "stack_id": stack_id,
+            }
+        )
         if result.get("ok"):
             return result.get("addrs", [])
         return []
@@ -153,10 +167,12 @@ class BaseProbe(ABC):
         """批量解析内核地址为符号名"""
         if not self._loader or not addrs:
             return ["??"] * len(addrs)
-        result = self._loader.send({
-            "cmd": "RESOLVE_KSYM",
-            "addrs": addrs,
-        })
+        result = self._loader.send(
+            {
+                "cmd": "RESOLVE_KSYM",
+                "addrs": addrs,
+            }
+        )
         if result.get("ok"):
             return result.get("symbols", ["??"] * len(addrs))
         return ["??"] * len(addrs)

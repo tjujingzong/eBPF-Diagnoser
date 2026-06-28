@@ -13,8 +13,10 @@ from src.analyzer.anomaly import Anomaly
 
 # ───────────────────── JSON输出 ─────────────────────
 
-def format_json(anomalies: List[Anomaly], system_info: dict = None,
-                duration: float = 0, overhead: dict = None) -> str:
+
+def format_json(
+    anomalies: List[Anomaly], system_info: dict = None, duration: float = 0, overhead: dict = None
+) -> str:
     """格式化为JSON诊断报告"""
     report = {
         "version": "1.0",
@@ -35,16 +37,23 @@ def format_json(anomalies: List[Anomaly], system_info: dict = None,
 
 # ───────────────────── YAML输出 ─────────────────────
 
+
 class _YAMLDumper(yaml.SafeDumper):
     pass
+
 
 def _yaml_representer(dumper, data):
     return dumper.represent_str(str(data))
 
-_YAMLDumper.add_representer(type(None), lambda d, _: d.represent_scalar('tag:yaml.org,2002:null', ''))
 
-def format_yaml(anomalies: List[Anomaly], system_info: dict = None,
-                duration: float = 0, overhead: dict = None) -> str:
+_YAMLDumper.add_representer(
+    type(None), lambda d, _: d.represent_scalar("tag:yaml.org,2002:null", "")
+)
+
+
+def format_yaml(
+    anomalies: List[Anomaly], system_info: dict = None, duration: float = 0, overhead: dict = None
+) -> str:
     """格式化为YAML诊断报告"""
     report = {
         "version": "1.0",
@@ -60,13 +69,17 @@ def format_yaml(anomalies: List[Anomaly], system_info: dict = None,
             "duration_seconds": round(duration, 1),
         },
     }
-    return yaml.dump(report, Dumper=_YAMLDumper, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    return yaml.dump(
+        report, Dumper=_YAMLDumper, default_flow_style=False, allow_unicode=True, sort_keys=False
+    )
 
 
 # ───────────────────── Markdown输出 ─────────────────────
 
-def format_markdown(anomalies: List[Anomaly], system_info: dict = None,
-                    duration: float = 0, overhead: dict = None) -> str:
+
+def format_markdown(
+    anomalies: List[Anomaly], system_info: dict = None, duration: float = 0, overhead: dict = None
+) -> str:
     """格式化为Markdown诊断报告"""
     lines = []
     lines.append("# eBPF Diagnoser 诊断报告")
@@ -106,7 +119,9 @@ def format_markdown(anomalies: List[Anomaly], system_info: dict = None,
         lines.append("")
         lines.append(f"**严重程度**: {anomaly.severity.value}")
         lines.append(f"**置信度**: {anomaly.confidence:.0%}")
-        lines.append(f"**时间窗口**: {anomaly.time_window.get('start', 'N/A')} ~ {anomaly.time_window.get('end', 'N/A')}")
+        lines.append(
+            f"**时间窗口**: {anomaly.time_window.get('start', 'N/A')} ~ {anomaly.time_window.get('end', 'N/A')}"
+        )
         lines.append("")
 
         # 受影响对象
@@ -178,6 +193,7 @@ def format_markdown(anomalies: List[Anomaly], system_info: dict = None,
 
 # ───────────────────── 终端表格输出 ─────────────────────
 
+
 def format_table(anomalies: List[Anomaly]) -> str:
     """格式化为终端友好的表格输出"""
     if not anomalies:
@@ -200,7 +216,9 @@ def format_table(anomalies: List[Anomaly]) -> str:
     for i, anomaly in enumerate(anomalies, 1):
         icon = severity_icons.get(anomaly.severity.value, "⚠️")
         type_name = type_names.get(anomaly.type.value, anomaly.type.value)
-        lines.append(f"\n{icon} [{i}] {type_name} (严重度: {anomaly.severity.value}, 置信度: {anomaly.confidence:.0%})")
+        lines.append(
+            f"\n{icon} [{i}] {type_name} (严重度: {anomaly.severity.value}, 置信度: {anomaly.confidence:.0%})"
+        )
         lines.append("-" * 72)
 
         # 受影响对象
@@ -256,8 +274,13 @@ class OutputFormatter:
         else:
             return format_table(anomalies)
 
-    def format_report(self, anomalies: List[Anomaly], system_info: dict = None,
-                      duration: float = 0, overhead: dict = None) -> Dict[str, str]:
+    def format_report(
+        self,
+        anomalies: List[Anomaly],
+        system_info: dict = None,
+        duration: float = 0,
+        overhead: dict = None,
+    ) -> Dict[str, str]:
         """格式化完整报告(含系统信息和开销)"""
         return {
             "json": format_json(anomalies, system_info, duration, overhead),

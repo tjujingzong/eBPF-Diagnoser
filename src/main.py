@@ -18,6 +18,7 @@
 import sys
 import os
 
+
 def main():
     """向后兼容入口: python -m src.main 等价于 ebpf-diagnoser run"""
     from src.cli import cli

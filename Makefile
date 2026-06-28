@@ -11,7 +11,7 @@ CFLAGS_BPF = -g -O2 -target bpf -D__TARGET_ARCH_$(ARCH) -I bpf/common
 CFLAGS_LOADER = -Wall -O2 -g $(shell pkg-config --cflags libbpf 2>/dev/null)
 LDFLAGS_LOADER = $(shell pkg-config --libs libbpf 2>/dev/null || echo "-lbpf") -lelf -lz
 
-.PHONY: all clean bpf loader install pip-install dev
+.PHONY: all clean bpf loader install pip-install dev lint format spell check
 
 all: bpf loader
 
@@ -47,3 +47,32 @@ install-bin: all
 
 clean:
 	rm -rf build/
+
+# ───────────────────── 代码质量检查 ─────────────────────
+
+# 代码检查 (lint + spell)
+check: lint spell
+
+# Ruff lint 检查
+lint:
+	python -m ruff check src/ scripts/
+
+# Ruff lint 自动修复
+lint-fix:
+	python -m ruff check --fix src/ scripts/
+
+# Ruff 格式化 (检查)
+format:
+	python -m ruff format --check src/ scripts/
+
+# Ruff 格式化 (写入)
+format-fix:
+	python -m ruff format src/ scripts/
+
+# Codespell 拼写检查
+spell:
+	python -m codespell src/ scripts/ config/ bpf/
+
+# Codespell 自动修复
+spell-fix:
+	python -m codespell -w src/ scripts/ config/ bpf/

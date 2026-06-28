@@ -46,13 +46,15 @@ class CorrelationEngine:
                 # I/O等待导致CPU iowait升高
                 for a in anomalies:
                     if a.type == AnomalyType.CPU_ANOMALY:
-                        a.evidence_chain.append(EvidenceStep(
-                            step=len(a.evidence_chain) + 1,
-                            description=f"I/O等待占比{iowait:.1f}%，CPU iowait异常，疑似I/O瓶颈导致的CPU等待",
-                            metric="cpu.global.cpu_iowait_percent",
-                            value=io_wait,
-                            baseline=None,
-                        ))
+                        a.evidence_chain.append(
+                            EvidenceStep(
+                                step=len(a.evidence_chain) + 1,
+                                description=f"I/O等待占比{iowait:.1f}%，CPU iowait异常，疑似I/O瓶颈导致的CPU等待",
+                                metric="cpu.global.cpu_iowait_percent",
+                                value=io_wait,
+                                baseline=None,
+                            )
+                        )
                         if a.root_cause and "cpu_intensive" in a.root_cause.category:
                             a.root_cause.description = "I/O延迟导致CPU陷入iowait等待"
                             a.root_cause.category = "cpu_io_wait"
@@ -66,12 +68,14 @@ class CorrelationEngine:
             if pswpin + pswpout > 10:
                 for a in anomalies:
                     if a.type == AnomalyType.IO_ANOMALY:
-                        a.evidence_chain.append(EvidenceStep(
-                            step=len(a.evidence_chain) + 1,
-                            description=f"换页活动频繁(pswpin={pswpin}/s, pswpout={pswpout}/s)，内存压力导致I/O延迟",
-                            metric="mem.system.pswpin_per_sec",
-                            value=pswpin,
-                        ))
+                        a.evidence_chain.append(
+                            EvidenceStep(
+                                step=len(a.evidence_chain) + 1,
+                                description=f"换页活动频繁(pswpin={pswpin}/s, pswpout={pswpout}/s)，内存压力导致I/O延迟",
+                                metric="mem.system.pswpin_per_sec",
+                                value=pswpin,
+                            )
+                        )
                         if a.root_cause:
                             a.root_cause.description = "内存压力导致频繁换页，引发I/O延迟"
                             a.root_cause.category = "memory_induced_io"
@@ -83,44 +87,58 @@ class CorrelationEngine:
             if ctx_sw > 20000:
                 for a in anomalies:
                     if a.type == AnomalyType.CPU_ANOMALY:
-                        a.evidence_chain.append(EvidenceStep(
-                            step=len(a.evidence_chain) + 1,
-                            description=f"锁竞争与高频上下文切换({ctx_sw}/s)关联，锁争用增加CPU调度开销",
-                            metric="cpu.global.context_switches_per_sec",
-                            value=ctx_sw,
-                        ))
+                        a.evidence_chain.append(
+                            EvidenceStep(
+                                step=len(a.evidence_chain) + 1,
+                                description=f"锁竞争与高频上下文切换({ctx_sw}/s)关联，锁争用增加CPU调度开销",
+                                metric="cpu.global.context_switches_per_sec",
+                                value=ctx_sw,
+                            )
+                        )
 
         # 内存 + 锁 关联 (新增: 内存分配锁争用)
-        if AnomalyType.MEMORY_ANOMALY in anomaly_types and AnomalyType.LOCK_ANOMALY in anomaly_types:
+        if (
+            AnomalyType.MEMORY_ANOMALY in anomaly_types
+            and AnomalyType.LOCK_ANOMALY in anomaly_types
+        ):
             mem_metrics = metrics.get("mem", {}).get("system", {})
             pgfault = mem_metrics.get("pgfault_per_sec", 0)
             if pgfault > 50000:
                 for a in anomalies:
                     if a.type == AnomalyType.LOCK_ANOMALY:
-                        a.evidence_chain.append(EvidenceStep(
-                            step=len(a.evidence_chain) + 1,
-                            description=f"高频缺页({pgfault}/s)与锁竞争关联，疑似内存分配锁争用加剧",
-                            metric="mem.system.pgfault_per_sec",
-                            value=pgfault,
-                        ))
+                        a.evidence_chain.append(
+                            EvidenceStep(
+                                step=len(a.evidence_chain) + 1,
+                                description=f"高频缺页({pgfault}/s)与锁竞争关联，疑似内存分配锁争用加剧",
+                                metric="mem.system.pgfault_per_sec",
+                                value=pgfault,
+                            )
+                        )
                         if a.root_cause:
-                            a.root_cause.description = "内存压力导致频繁page fault，引发内存分配锁争用"
+                            a.root_cause.description = (
+                                "内存压力导致频繁page fault，引发内存分配锁争用"
+                            )
                             a.root_cause.category = "memory_induced_lock_contention"
                             a.root_cause.confidence = min(a.root_cause.confidence + 0.05, 0.99)
 
         # CPU + Syscall 关联 (新增: 高频syscall导致CPU飙高)
-        if AnomalyType.SYSCALL_ANOMALY in anomaly_types and AnomalyType.CPU_ANOMALY in anomaly_types:
+        if (
+            AnomalyType.SYSCALL_ANOMALY in anomaly_types
+            and AnomalyType.CPU_ANOMALY in anomaly_types
+        ):
             syscall_metrics = metrics.get("syscall", {}).get("global", {})
             total_syscalls = syscall_metrics.get("total_syscalls", 0)
             if total_syscalls > 100000:
                 for a in anomalies:
                     if a.type == AnomalyType.CPU_ANOMALY:
-                        a.evidence_chain.append(EvidenceStep(
-                            step=len(a.evidence_chain) + 1,
-                            description=f"高频系统调用({total_syscalls})与CPU高占用关联，syscall开销导致CPU饱和",
-                            metric="syscall.global.total_syscalls",
-                            value=total_syscalls,
-                        ))
+                        a.evidence_chain.append(
+                            EvidenceStep(
+                                step=len(a.evidence_chain) + 1,
+                                description=f"高频系统调用({total_syscalls})与CPU高占用关联，syscall开销导致CPU饱和",
+                                metric="syscall.global.total_syscalls",
+                                value=total_syscalls,
+                            )
+                        )
                         if a.root_cause and "cpu_intensive" in a.root_cause.category:
                             a.root_cause.description = "高频系统调用导致CPU开销增加"
                             a.root_cause.category = "cpu_syscall_overhead"
@@ -187,9 +205,7 @@ class AnalyzerEngine:
             anomaly.time_window["start"] = datetime.fromtimestamp(
                 now - self._suppression_window
             ).strftime("%Y-%m-%dT%H:%M:%S")
-            anomaly.time_window["end"] = datetime.fromtimestamp(
-                now
-            ).strftime("%Y-%m-%dT%H:%M:%S")
+            anomaly.time_window["end"] = datetime.fromtimestamp(now).strftime("%Y-%m-%dT%H:%M:%S")
 
         self._last_anomalies = filtered
         return filtered
