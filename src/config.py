@@ -76,6 +76,24 @@ class OutputConfig:
     timestamp_format: str = "%Y-%m-%dT%H:%M:%S%z"  # ISO 8601
 
 
+@dataclass
+class LLMConfig:
+    """LLM配置"""
+
+    provider: str = "openai"  # openai / anthropic
+    api_key: Optional[str] = None  # API密钥（优先读取环境变量 EBPF_DIAGNOSER_API_KEY）
+    model: str = "gpt-4o-mini"  # 模型名称
+    base_url: Optional[str] = None  # 自定义API端点（兼容OpenAI格式的其他服务）
+    temperature: float = 0.7  # 生成温度
+    max_tokens: int = 4096  # 最大输出token
+    timeout: int = 60  # 请求超时(秒)
+
+    # 成本控制
+    max_input_tokens: int = 8000  # 单次最大输入token（超出则截断）
+    cache_enabled: bool = True  # 启用结果缓存
+    cache_dir: str = "~/.cache/ebpf-diagnoser/llm"  # 缓存目录
+
+
 class Config:
     """全局配置"""
 
@@ -83,6 +101,7 @@ class Config:
         self.thresholds = ThresholdConfig()
         self.probe = ProbeConfig()
         self.output = OutputConfig()
+        self.llm = LLMConfig()
 
     def set_threshold(self, key: str, value: float):
         """动态设置阈值"""
@@ -97,6 +116,7 @@ class Config:
             "thresholds": self.thresholds.__dict__,
             "probe": self.probe.__dict__,
             "output": self.output.__dict__,
+            "llm": self.llm.__dict__,
         }
 
 
@@ -148,5 +168,11 @@ def load_config(config_path: Optional[str] = None) -> Config:
             for key, value in yaml_config["output"].items():
                 if hasattr(config.output, key):
                     setattr(config.output, key, value)
+
+        # 合并LLM配置
+        if "llm" in yaml_config:
+            for key, value in yaml_config["llm"].items():
+                if hasattr(config.llm, key):
+                    setattr(config.llm, key, value)
 
     return config

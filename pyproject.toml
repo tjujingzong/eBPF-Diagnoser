@@ -24,6 +24,17 @@ dev = [
     "ruff>=0.4",
     "codespell>=2.2",
 ]
+llm = [
+    "openai>=1.0",
+    "anthropic>=0.20",
+]
+all = [
+    "pytest>=7.0",
+    "ruff>=0.4",
+    "codespell>=2.2",
+    "openai>=1.0",
+    "anthropic>=0.20",
+]
 
 [project.scripts]
 ebpf-diagnoser = "src.cli:cli"

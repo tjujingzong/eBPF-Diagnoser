@@ -57,3 +57,16 @@ output:
   include_evidence_chain: true   # 是否包含证据链
   include_recommendations: true  # 是否包含建议
   timestamp_format: "%Y-%m-%dT%H:%M:%S%z"
+
+# LLM配置
+llm:
+  provider: openai               # openai / anthropic
+  api_key: null                  # API密钥（优先读取环境变量 EBPF_DIAGNOSER_API_KEY）
+  model: gpt-4o-mini             # 模型名称
+  base_url: null                 # 自定义API端点（兼容OpenAI格式的其他服务）
+  temperature: 0.7               # 生成温度
+  max_tokens: 4096               # 最大输出token
+  timeout: 60                    # 请求超时(秒)
+  max_input_tokens: 8000         # 单次最大输入token（超出则截断）
+  cache_enabled: true            # 启用结果缓存
+  cache_dir: "~/.cache/ebpf-diagnoser/llm"  # 缓存目录

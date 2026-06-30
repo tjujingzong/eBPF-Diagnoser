@@ -890,6 +890,371 @@ def config_path():
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  ebpf-diagnoser analyze
+# ═══════════════════════════════════════════════════════════════════
+
+
+@cli.command()
+@click.option("--input", "-i", type=click.Path(exists=True), required=True,
+              help="输入的JSON诊断报告文件")
+@click.option("--output", "-o", type=click.Choice(["md", "json"]), default="md",
+              help="输出格式", show_default=True)
+@click.option("--output-file", "-f", type=str, default=None,
+              help="输出文件路径 (默认: stdout)")
+@click.option("--llm-provider", type=str, default=None,
+              help="LLM提供商 (默认: 配置文件设置)")
+@click.option("--llm-model", type=str, default=None,
+              help="LLM模型 (默认: 配置文件设置)")
+def analyze(input, output, output_file, llm_provider, llm_model):
+    """智能分析报告
+
+    使用LLM对诊断数据进行深度分析，生成详细的分析报告。
+
+    \b
+    示例:
+      ebpf-diagnoser analyze -i report.json              # 分析诊断报告
+      ebpf-diagnoser analyze -i report.json -o md -f report.md  # 输出到文件
+    """
+    from src.config import load_config
+    from src.llm import create_analyzer
+
+    # 加载配置
+    config = load_config(None)
+
+    # 覆盖LLM配置
+    if llm_provider:
+        config.llm.provider = llm_provider
+    if llm_model:
+        config.llm.model = llm_model
+
+    # 创建分析器
+    analyzer = create_analyzer(config)
+    if not analyzer:
+        console.print("[bold red]错误: LLM配置不完整[/bold red]")
+        console.print("请设置环境变量 EBPF_DIAGNOSER_API_KEY 或在配置文件中设置 llm.api_key")
+        sys.exit(1)
+
+    # 读取诊断数据
+    try:
+        with open(input, "r", encoding="utf-8") as f:
+            diagnosis_data = json.load(f)
+    except Exception as e:
+        console.print(f"[bold red]读取诊断文件失败: {e}[/bold red]")
+        sys.exit(1)
+
+    # 生成分析报告
+    with console.status("[bold green]LLM正在分析诊断数据..."):
+        try:
+            analysis = analyzer.analyze_diagnosis(diagnosis_data)
+        except Exception as e:
+            console.print(f"[bold red]LLM分析失败: {e}[/bold red]")
+            sys.exit(1)
+
+    # 输出结果
+    if output_file:
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(analysis)
+        console.print(f"[green]分析报告已保存: {output_file}[/green]")
+    else:
+        console.print(analysis)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ebpf-diagnoser remediate
+# ═══════════════════════════════════════════════════════════════════
+
+
+@cli.command()
+@click.option("--input", "-i", type=click.Path(exists=True), required=True,
+              help="输入的JSON诊断报告文件")
+@click.option("--execute", is_flag=True, default=False,
+              help="自动执行修复命令 (需二次确认)")
+@click.option("--llm-provider", type=str, default=None,
+              help="LLM提供商")
+@click.option("--llm-model", type=str, default=None,
+              help="LLM模型")
+def remediate(input, execute, llm_provider, llm_model):
+    """自动修复建议
+
+    基于诊断数据生成可执行的修复命令。
+
+    \b
+    示例:
+      ebpf-diagnoser remediate -i report.json           # 生成修复建议
+      ebpf-diagnoser remediate -i report.json --execute  # 执行修复
+    """
+    import platform
+    from src.config import load_config
+    from src.llm import create_analyzer
+
+    # 加载配置
+    config = load_config(None)
+    if llm_provider:
+        config.llm.provider = llm_provider
+    if llm_model:
+        config.llm.model = llm_model
+
+    # 创建分析器
+    analyzer = create_analyzer(config)
+    if not analyzer:
+        console.print("[bold red]错误: LLM配置不完整[/bold red]")
+        console.print("请设置环境变量 EBPF_DIAGNOSER_API_KEY 或在配置文件中设置 llm.api_key")
+        sys.exit(1)
+
+    # 读取诊断数据
+    try:
+        with open(input, "r", encoding="utf-8") as f:
+            diagnosis_data = json.load(f)
+    except Exception as e:
+        console.print(f"[bold red]读取诊断文件失败: {e}[/bold red]")
+        sys.exit(1)
+
+    # 生成修复建议
+    with console.status("[bold green]LLM正在生成修复建议..."):
+        try:
+            remediation = analyzer.generate_remediation(
+                diagnosis_data,
+                os_info=platform.platform(),
+                kernel_version=platform.release()
+            )
+        except Exception as e:
+            console.print(f"[bold red]LLM分析失败: {e}[/bold red]")
+            sys.exit(1)
+
+    console.print(Panel(remediation, title="修复建议", border_style="cyan"))
+
+    # 如果指定了执行，解析并执行命令
+    if execute:
+        try:
+            # 尝试从响应中提取JSON
+            import re
+            json_match = re.search(r'```json\s*(.*?)\s*```', remediation, re.DOTALL)
+            if json_match:
+                remediation_data = json.loads(json_match.group(1))
+            else:
+                remediation_data = json.loads(remediation)
+
+            if not isinstance(remediation_data, list):
+                console.print("[yellow]无法解析修复命令格式[/yellow]")
+                return
+
+            for item in remediation_data:
+                cmd = item.get("immediate_fix", {}).get("command")
+                if cmd:
+                    console.print(f"\n[cyan]建议命令:[/cyan] {cmd}")
+                    if click.confirm("是否执行此命令？"):
+                        console.print(f"[dim]执行: {cmd}[/dim]")
+                        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                        if result.returncode == 0:
+                            console.print("[green]执行成功[/green]")
+                            if result.stdout:
+                                console.print(result.stdout)
+                        else:
+                            console.print(f"[red]执行失败: {result.stderr}[/red]")
+                    else:
+                        console.print("[yellow]跳过此命令[/yellow]")
+
+        except json.JSONDecodeError:
+            console.print("[yellow]无法解析修复建议为JSON格式，请手动执行建议的命令[/yellow]")
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ebpf-diagnoser chat
+# ═══════════════════════════════════════════════════════════════════
+
+
+@cli.command()
+@click.option("--context", "-c", type=click.Path(exists=True), default=None,
+              help="诊断数据上下文文件 (JSON格式)")
+@click.option("--query", "-q", type=str, default=None,
+              help="单次提问 (非交互模式)")
+@click.option("--llm-provider", type=str, default=None,
+              help="LLM提供商")
+@click.option("--llm-model", type=str, default=None,
+              help="LLM模型")
+def chat(context, query, llm_provider, llm_model):
+    """交互式问答
+
+    基于诊断数据与LLM进行交互式问答。
+
+    \b
+    示例:
+      ebpf-diagnoser chat -c report.json              # 交互模式
+      ebpf-diagnoser chat -c report.json -q "为什么CPU高？"  # 单次提问
+    """
+    from src.config import load_config
+    from src.llm import create_analyzer
+
+    # 加载配置
+    config = load_config(None)
+    if llm_provider:
+        config.llm.provider = llm_provider
+    if llm_model:
+        config.llm.model = llm_model
+
+    # 创建分析器
+    analyzer = create_analyzer(config)
+    if not analyzer:
+        console.print("[bold red]错误: LLM配置不完整[/bold red]")
+        console.print("请设置环境变量 EBPF_DIAGNOSER_API_KEY 或在配置文件中设置 llm.api_key")
+        sys.exit(1)
+
+    # 加载上下文数据
+    context_data = None
+    if context:
+        try:
+            with open(context, "r", encoding="utf-8") as f:
+                context_data = json.load(f)
+        except Exception as e:
+            console.print(f"[yellow]警告: 无法加载上下文文件: {e}[/yellow]")
+
+    # 单次提问模式
+    if query:
+        with console.status("[bold green]思考中..."):
+            try:
+                response = analyzer.chat(query, context_data)
+                console.print(response)
+            except Exception as e:
+                console.print(f"[bold red]LLM调用失败: {e}[/bold red]")
+                sys.exit(1)
+        return
+
+    # 交互模式
+    console.print(Panel(
+        "[bold]eBPF Diagnoser 智能问答[/bold]\n"
+        "输入问题与LLM对话，输入 exit 或 quit 退出",
+        border_style="cyan"
+    ))
+
+    history = []
+    while True:
+        try:
+            user_input = console.input("\n[bold cyan]你> [/bold cyan]")
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n[dim]再见！[/dim]")
+            break
+
+        if user_input.strip().lower() in ("exit", "quit", "q"):
+            console.print("[dim]再见！[/dim]")
+            break
+
+        if not user_input.strip():
+            continue
+
+        # 流式输出
+        try:
+            console.print("\n[bold green]AI> [/bold green]", end="")
+            for chunk in analyzer.chat_stream(user_input, context_data, history):
+                console.print(chunk, end="", highlight=False)
+            console.print()  # 换行
+
+            # 更新历史
+            history.append({"role": "user", "content": user_input})
+            # 简化：只保留最近的响应作为assistant消息
+            # 完整实现需要捕获完整响应
+        except Exception as e:
+            console.print(f"\n[red]LLM调用失败: {e}[/red]")
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ebpf-diagnoser log-analyze
+# ═══════════════════════════════════════════════════════════════════
+
+
+@cli.command("log-analyze")
+@click.option("--input", "-i", type=click.Path(exists=True), required=True,
+              help="输入的JSON诊断报告文件")
+@click.option("--log", "-l", type=str, required=True,
+              help="日志文件路径 (支持: 文件路径、dmesg、syslog)")
+@click.option("--lines", "-n", type=int, default=500,
+              help="分析的日志行数 (从末尾读取)", show_default=True)
+@click.option("--output-file", "-f", type=str, default=None,
+              help="输出文件路径 (默认: stdout)")
+@click.option("--llm-provider", type=str, default=None,
+              help="LLM提供商")
+@click.option("--llm-model", type=str, default=None,
+              help="LLM模型")
+def log_analyze(input, log, lines, output_file, llm_provider, llm_model):
+    """日志智能分析
+
+    结合eBPF诊断数据和系统日志进行关联分析。
+
+    \b
+    示例:
+      ebpf-diagnoser log-analyze -i report.json -l /var/log/syslog
+      ebpf-diagnoser log-analyze -i report.json -l dmesg
+      ebpf-diagnoser log-analyze -i report.json -l /var/log/nginx/error.log -n 1000
+    """
+    from src.config import load_config
+    from src.llm import create_analyzer
+
+    # 加载配置
+    config = load_config(None)
+    if llm_provider:
+        config.llm.provider = llm_provider
+    if llm_model:
+        config.llm.model = llm_model
+
+    # 创建分析器
+    analyzer = create_analyzer(config)
+    if not analyzer:
+        console.print("[bold red]错误: LLM配置不完整[/bold red]")
+        console.print("请设置环境变量 EBPF_DIAGNOSER_API_KEY 或在配置文件中设置 llm.api_key")
+        sys.exit(1)
+
+    # 读取诊断数据
+    try:
+        with open(input, "r", encoding="utf-8") as f:
+            diagnosis_data = json.load(f)
+    except Exception as e:
+        console.print(f"[bold red]读取诊断文件失败: {e}[/bold red]")
+        sys.exit(1)
+
+    # 读取日志
+    log_content = ""
+    try:
+        if log == "dmesg":
+            result = subprocess.run(["dmesg"], capture_output=True, text=True, timeout=10)
+            log_lines = result.stdout.strip().split("\n")[-lines:]
+            log_content = "\n".join(log_lines)
+        elif log == "syslog":
+            syslog_path = "/var/log/syslog"
+            if not os.path.exists(syslog_path):
+                syslog_path = "/var/log/messages"
+            with open(syslog_path, "r", encoding="utf-8", errors="ignore") as f:
+                all_lines = f.readlines()[-lines:]
+                log_content = "".join(all_lines)
+        else:
+            with open(log, "r", encoding="utf-8", errors="ignore") as f:
+                all_lines = f.readlines()[-lines:]
+                log_content = "".join(all_lines)
+    except Exception as e:
+        console.print(f"[bold red]读取日志失败: {e}[/bold red]")
+        sys.exit(1)
+
+    if not log_content.strip():
+        console.print("[yellow]日志内容为空[/yellow]")
+        sys.exit(1)
+
+    # 分析日志
+    actual_lines = len(log_content.strip().split("\n"))
+    with console.status(f"[bold green]LLM正在分析{actual_lines}行日志..."):
+        try:
+            analysis = analyzer.analyze_logs(diagnosis_data, log_content, actual_lines)
+        except Exception as e:
+            console.print(f"[bold red]LLM分析失败: {e}[/bold red]")
+            sys.exit(1)
+
+    # 输出结果
+    if output_file:
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(analysis)
+        console.print(f"[green]分析报告已保存: {output_file}[/green]")
+    else:
+        console.print(analysis)
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  入口
 # ═══════════════════════════════════════════════════════════════════
 
